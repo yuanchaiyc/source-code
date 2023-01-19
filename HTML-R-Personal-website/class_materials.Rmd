@@ -1,0 +1,14 @@
+---
+title: "Class materials"
+---
+
+```{r echo=FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                     fig.align = 'center',
+                     options(warn=-1))
+suppressMessages(library(rmarkdown))
+suppressMessages(library(knitr))
+```
+
+* [PSYC241 Winter 2020](PSYC241.html)
+* [LIGN110 Phonetics Fall 2020](lign110fall2020.html)

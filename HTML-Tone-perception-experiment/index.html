@@ -1,0 +1,393 @@
+<html>
+  
+  <head>
+    <meta charset=utf-8>
+    
+
+    <title>Identification task</title>
+    <!-- download jquery on local computer so you can access it offline -->
+    
+    <script src="jquery.min.js"></script>
+    <script src="jspsych.js"></script>
+    <link href="image/cover_image.jpg" rel="icon" type="image/x-icon" />
+     <link rel="stylesheet" href="style.css" />
+
+  </head>
+  <body>
+    <!-- Instructions DIV is hidden once they 
+    click the button -->
+    
+    <div id="startholderdiv">
+      <p>
+        欢迎参加霞浦话实验。本实验一共包括三个小实验。前两个是听录音选字或词，最后一个是用霞浦话读句子。
+      </p>     
+      <div id = "startholderButtondiv">
+      <button id="startholderExperimentButton">
+        点击此处开始实验
+      </button>
+      </div>
+    </div>
+
+
+
+    <div id="instructions">
+      <p>
+        实验一<br><br>
+        接下来您将听到一些用霞浦话讲的字。您会看到一些选项。请选择您认为其中最符合您听到的录音的选项。<br><br>
+       在您选择所听到的字后，请用数字1、2、3、4、5来表示您觉得录音与您选的字的匹配程度。1代表您认为录音和选的字非常不配，5代表您认为录音和选的字非常配。选的数字越大，代表您觉得录音和字越匹配。<br> <br>
+        您可以点击“重播”按钮来多次播放录音，重复播放录音的次数没有限制。<br><br>
+        请先做十个练习题。
+      </p>
+      <div id = "startButtondiv">
+      <button id="startExperimentButton">
+        点击此处开始练习
+      </button>
+      </div>
+    </div>
+
+
+    <div id = "doneExperimentIPartI">
+      <p>
+      实验一 第一部分到此结束
+      </p>
+      <div id = "EndExperimentIPartIButtondiv">
+      <button id="EndExperimentIPartIButton">
+        点击此处开始实验一 第二部分
+      </button>
+      </div>
+    </div>
+
+
+    
+    
+
+    <div id = "donePracticeI">
+      <p>
+      练习到此结束。<br>下面实验正式开始。实验一共有两部分，每部分有四十题。
+      </p>
+      <div id = "EndPracticeButtondiv">
+      <button id="EndPracticeButton">
+        点击此处开始实验一 第一部分
+      </button>
+      </div>
+    </div>
+
+    
+    
+    
+    
+    <div id = "doneExperimentI">
+      <p>
+      实验一到此结束。
+      </p>
+      <div id = "EndExperimentIButtondiv">
+      <button id="EndExperimentIButton">
+        点击此处进入实验二
+      </button>
+      </div>
+    </div>
+    
+    <div id = "donePracticeII">
+      <p>
+      练习到此结束。下面实验正式开始。实验二共有两部分，每部分二十题。
+      </p>
+      <div id = "EndPracticeIIButtondiv">
+      <button id="EndPracticeIIButton">
+        点击此处开始实验二 第一部分
+      </button>
+      </div>
+    </div>
+    
+
+    <div id = "doneExperimentIIPartI">
+      <p>
+      实验二 第一部分到此结束
+      </p>
+      <div id = "EndExperimentIIPartIButtondiv">
+      <button id="EndExperimentIIPartIButton">
+        点击此处开始实验二 第二部分
+      </button>
+      </div>
+    </div>
+
+    
+    <div id = "doneExperimentII">
+      <p>
+      实验二到此结束
+      </p>
+      <div id = "EndExperimentIIButtondiv">
+      <button id="EndExperimentIIButton">
+        点击此处开始实验三
+      </button>
+      </div>
+    </div>
+     
+    
+    <div id="instructions2">
+      <p>
+        实验二 <br><br>
+        您将会听到一个用霞浦话讲的词。这个词的第二个字被噪音覆盖了。在录音中您会听到每个词的第一个字。每一题中您会看到两个选项。您需要通过听到的第一个字来判断原本的词是什么。<br> <br>
+        您可以点击“重播”按钮来多次播放录音，重复播放录音的次数没有限制。<br><br>
+        请先做四个练习题。
+      </p>
+      <div id = "startIIButtondiv">
+      <button id="startExperimentIIButton">
+        点击此处开始练习
+      </button>
+      </div>
+    </div>
+
+
+    <div id="instructionProductiondiv">
+       <p>
+        实验三 <br><br>
+        接下来，您将会在屏幕上看到一句话：“我会讲‘X’这个字。”请您用霞浦话，用平常讲话的语调、语速、语气读出屏幕上的句子。一共有七个句子。
+      </p>
+      <div id = "startProductiondiv">
+      <button id="startProductiondivButton">
+        点击此处开始实验三
+      </button>
+      </div>
+    </div>
+    
+    
+    
+    
+    
+    <div id="productiondiv">
+    <div style="text-align:center;" id = "productionnumdiv">
+        <p id = "productionnum">TrialNumber</p>
+    </div>
+
+      <p style="text-align:center;">
+        请用您用霞浦话，用平时的语速、语调讲下面这句话： <br><br>
+        <p style="text-align:center;" id = "productiontext">text</p>
+      <br><br>
+      </p>
+      <div id = "productionButtondiv">
+      <button id="productionButton">
+        点击此处进入下一题
+      </button>
+      </div>
+    </div>
+    
+    
+    
+    
+    
+    <div id="debriefing">
+      <p>
+        被试编号（实验者填写）: <input id="subjectid"> <br> <br>
+      </p>
+
+      
+       <div id = "doneWithDebriefingButtondiv">
+      <button id="doneWithDebriefing">
+        点击此处提交
+      </button>
+    </div>
+    </div>
+    
+    <div id="preload"></div>
+      
+
+    <div id="trialDiv">
+    <div style="text-align:center;" id = "trialnumdiv">
+        <p id = "trialnum">TrialNumber</p>
+    </div>
+
+      <p style="text-align:center;" id = "prompt">您听到了以下哪个字？ 
+      <button id = "play">重播</button></p>
+      <br>
+      <div id ="buttonExpI">
+      
+      <div class="checkboxgroup">
+
+      <label id = "word1label" for="word1">word1</label>
+      <input type="radio" id="word1" name="ExpI" value="1" /> 
+      
+      </div>
+
+      <div class="checkboxgroup">
+        
+      <label id = "word2label" for="word2">word2</label>
+      <input type="radio" id="word2" name="ExpI" value="2" />
+      </div>
+
+      <div class="checkboxgroup">
+      <label id = "word3label" for="word3">word3</label>
+      <input type="radio" id="word3" name="ExpI" value="3" />
+      </div>
+
+        
+      <div class="checkboxgroup">
+      <label id = "word4label" for="word4">word4</label>
+      <input type="radio" id="word4" name="ExpI" value="4" />
+      </div>
+        
+      <div class="checkboxgroup">
+
+      <label id = "word5label" for="word5">word5</label>
+      <input type="radio" id="word5" name="ExpI" value="5" />
+      </div>
+        
+      <div class="checkboxgroup">
+      <label id = "word6label" for="word6">word6</label>
+      <input type="radio" id="word6" name="ExpI" value="6" />
+      </div>
+        
+      <div class="checkboxgroup">
+      <label id = "word7label" for="word7">word7</label>
+      <input type="radio" id="word7" name="ExpI" value="7" />
+      </div>
+      </div>
+        
+      <div id = "scale">
+      <br>
+      <br>
+
+      <p  style="text-align:center; font-size: 14pt;" id = "scaleprompt">
+       您觉得录音和选的这个字配不配？1代表非常不配，5代表非常配。请选择1到5之间的一个数字。
+      </p>
+        
+        
+        
+        
+      <div id = "likertscale">   
+<table>
+    <thead>
+        <tr>
+            <th></th>
+            <th style="text-align:center" width="30px">1</th>
+            <th style="text-align:center" width="30px">2</th>
+            <th style="text-align:center" width="30px">3</th>
+            <th style="text-align:center" width="30px">4</th>
+            <th style="text-align:center" width="30px">5</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td style="text-align:right;">录音和选的字非常不配</td>
+            <td style="text-align:center" width="30px"><input type="radio" id="likertStart" name="confident" value="1"/></td>
+            <td style="text-align:center" width="30px"><input type="radio" id="likert2" name="confident" value="2"/></td>
+            <td style="text-align:center" width="30px"><input type="radio" id="likert3" name="confident" value="3"/></td>
+            <td style="text-align:center" width="30px"><input type="radio" id="likert4" name="confident" value="4"/></td>
+            <td style="text-align:center" width="30px"><input type="radio" id="likertEnd" name="confident" value="5"/></td>
+            <td style="text-align:left;">录音和选的字非常配</td>
+        </tr>
+  </tbody>
+</table>  
+       </div>   
+       </div>
+
+
+      
+        
+        
+        
+        
+        
+        
+        
+      <div id = "submitbutton">
+        <br>
+        <br>
+        <button id="submit">提交</button>
+    </div>
+    </div>
+
+
+
+    
+    <div id="trialDivII">
+    <div style="text-align:center;" id = "trialnumdivII">
+        <p id = "trialnumII">TrialNumber</p>
+    </div>
+
+      <p style="text-align:center;" id = "promptII">您听到的录音属于以下哪个词？ 
+      <button id = "playII">重播</button></p>
+      <br>
+      <div id ="buttonExpII">
+      
+      <div class="checkboxgroup">
+
+      <label id = "word1labelII" for="word1II">word1</label>
+      <input type="radio" id="word1II" name="ExpII" value="1" /> 
+      
+      </div>
+
+      <div class="checkboxgroup">
+        
+      <label id = "word2labelII" for="word2II">word2</label>
+      <input type="radio" id="word2II" name="ExpII" value="2" />
+      </div>
+      <br> <br>
+      </div>
+
+ 
+      
+
+
+
+        
+      <div id = "submitbuttonII">
+        <br>
+        <br>
+        <button id="submitII">提交</button>
+    </div>
+      </div>
+   
+    
+    
+    
+    
+    <div id="fixation">
+      <span>
+      &#10010
+      </span>
+    </div>
+    
+    <div id="distraction">
+      <p id = "distractionInstruction">
+        请点击白色的星星让它变蓝
+      </p>
+      <span id = "star1" style="margin-right: 10px">
+        &#9733
+      </span>
+      <span id = "star2" style="margin-right: 10px">
+        &#9733
+      </span>
+      <span id = "star3" style="margin-right: 10px">
+        &#9733
+      </span>
+      <span id = "star4" style="margin-right: 10px">
+        &#9733
+      </span>
+      <span id = "star5" style="margin-right: 10px">
+        &#9733
+      </span>
+      
+    </div>
+    
+    
+    
+    
+    <div id="done">
+      感谢您参加本次实验！
+    </div>
+    
+    
+    <audio controls id="sound">
+    <!--having controls mean you can see it; if no controls, you cannot see it.-->
+    <source src = "https://cdn.glitch.com/72d33110-ec62-4749-8ea2-f76b016071de%2F35A.wav?v=1581534407853" type="audio/ogg">
+      Your browser does not support the audio element.
+    </audio>
+    
+  <script type="text/javascript" src="script.js"></script>
+   
+    
+  </body>
+  
+  
+</html>

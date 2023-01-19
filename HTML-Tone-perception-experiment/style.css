@@ -1,0 +1,398 @@
+      body {
+        font-size: 16pt;
+        font-family: Helvetica, Arial;
+      }
+     
+      label {
+        font-size: 14pt;
+        text-align: center;
+      }
+      
+      #instructions {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+      input, button {
+        font-size: 15pt;
+        text-align: center;
+      }
+
+      .checkboxgroup {
+        display: inline-block;
+        text-align: center;
+        margin-left: 15px;
+        margin-right: 15px;
+
+      }
+      .checkboxgroup label {
+        display: block;
+      }
+
+
+      /*input and button ignores body css*/
+      #trialDiv {
+        /*color means the color of the text; background color means the color of the div box*/
+        display: none; 
+        width: 800px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+      #productiondiv {
+        /*color means the color of the text; background color means the color of the div box*/
+        display: none; 
+        width: 800px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+
+
+      #trialDivII {
+        /*color means the color of the text; background color means the color of the div box*/
+        display: none; 
+        width: 800px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-50%);
+      }
+      #productiondiv {
+        /*color means the color of the text; background color means the color of the div box*/
+        display: none; 
+        width: 800px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+      #done {
+        display: none;
+        text-align: center;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-50%);      
+      }
+      #fixation {
+        display: none;      
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+      #sound {
+        display: none;
+      }
+      #prompt {
+        text-align: center;
+      }
+      #scaleprompt {
+        text-align: center;
+      }
+      #scalepromptII {
+        text-align: center;
+      }
+
+      #promptII {
+        text-align: center;
+      }
+
+
+      #playII {
+        margin-left: 20px;
+      }
+
+
+
+      #play {
+        margin-left: 20px;
+      }
+
+      #preload {
+        display: none;
+      }
+      
+      
+
+      #buttonExpI{
+  
+        
+        display: flex;
+        justify-content: center;
+      }
+
+
+      #buttonExpII{
+  
+        
+        display: flex;
+        justify-content: center;
+      }
+
+
+      #likertscale{
+        display: flex;
+        justify-content: center;
+        
+      }
+
+      #likertscaleII{
+        display: flex;
+        justify-content: center;
+        
+      }
+      .likertlabel{
+        margin-left: 15px;
+        margin-right: 15px;
+      }
+
+
+
+      #submitbutton {
+        text-align:center; 
+      }
+
+      #submitbuttonII {
+        text-align:center; 
+      }
+
+       #productionButtondiv {
+        text-align:center; 
+      }
+      #productionButton {
+        text-align:center;
+      }
+     
+      #startButtondiv {
+        text-align:center; 
+      }
+      
+      #EndExperimentIButtondiv {
+        text-align:center;
+      }
+      
+      #EndExperimentIPartIButtondiv {
+        text-align:center;
+      }
+
+      #EndExperimentIPartIIButtondiv {
+        text-align:center;
+      }
+
+      #EndExperimentIIPartIButtondiv {
+        text-align:center;
+      }
+
+      #EndExperimentIIPartIIButtondiv {
+        text-align:center;
+      }
+      #EndExperimentIIPartIIIButtondiv {
+        text-align:center;
+      }
+
+
+
+
+      #EndPracticeButtondiv {
+        text-align:center;
+      }
+
+      #EndPracticeIIButtondiv {
+        text-align:center;
+      }
+
+
+      #startIIButtondiv {
+        text-align:center;
+      }
+
+      #startProductiondiv {
+        text-align:center;
+      }
+
+
+
+
+
+
+      #doneExperimentI {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+      #doneExperimentII {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+
+      #doneExperimentIPartI {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+      #doneExperimentIPartII {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+
+      #doneExperimentIIPartI {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+      #doneExperimentIIPartII {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+      #doneExperimentIIPartIII {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+
+      #donePracticeI {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+
+
+      #donePracticeII {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+
+
+
+      #instructions2 {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+
+      #instructionProductiondiv {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+
+
+
+      #distraction {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-50%); 
+        color: dodgerblue;
+        text-align: center;
+        cursor: default;
+      }
+      #distractionInstruction {
+        color: black;
+      }
+      /*cursor pointer to chance the cursor for the star*/
+      
+      table {
+        font-size: 14pt;
+      }
+
+      #startholderButtondiv {
+        text-align:center; 
+      }
+
+      #startholderdiv {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+
+      #debriefing {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+      #doneWithDebriefingButtondiv {
+        text-align:center; 
+      }

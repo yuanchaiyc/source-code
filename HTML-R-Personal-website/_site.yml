@@ -1,0 +1,11 @@
+name: "yuan-website"
+output_dir: "."
+navbar:
+  title: ""
+  left:
+    - text: "Home"
+      href: index.html
+    - text: "Research"
+      href: research.html
+    - text: "Publications"
+      href: publications.html

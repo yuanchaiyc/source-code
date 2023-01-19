@@ -1,0 +1,36 @@
+---
+title: "Publications"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+***
+* Chai, Y., Kunda, T., Rodríguez, A. & Rose, S. The prosody of declaratives and
+questions in Rere. To appear. In H. Kubozono, J. Ito & A. Mester (Eds.), Prosody and Prosodic Interfaces, Oxford: Oxford University Press. [pre-print](file/Chai_et_al_The_Prosody_of_Questions_in_Rere.pdf)
+* Caballero, G., Chai, Y. & Garellek, M. Stress, tone, and intonation in Choguita Rarámuri. To appear. In H. Kubozono, J. Ito & A. Mester (Eds.), Prosody and Prosodic Interfaces, Oxford: Oxford University Press. [pre-print](file/Caballero_et_al_Raramuri_prosody.pdf)
+* Garellek, M., Chai, Y., Huang, Y. & Van Doren, M. Voicing of glottal consonants and non-modal vowels. To appear. Journal of the International Phonetic Association. [pre-print](https://osf.io/rs89n/)
+* Chai, Y. 8/2019. The source of creak in Mandarin utterances. ICPhS 2019. [proceedings](file/Chai_Mandarin_creak_icphs2019.pdf) [revised version](https://escholarship.org/uc/item/8mg0x5pb#main)
+
+
+***
+
+
+### Conference presentations
+* Chai, Y. 5/2020 (canceled due to COVID). The role of tone in TAM, verb class, and subject agreement in Rere. ACAL 51. [abstract](file/Chai_ACAL_abstract.pdf)
+* Chai, Y. 8/2019. The source of creak in Mandarin utterances. ICPhS 2019. [slides](file/slides_icphs2019_yc.pdf) [data](https://doi.org/10.17605/OSF.IO/XR8D7)
+* Chai, Y. 2/2018. Less proficient, more gestures? BLS 44. [manuscript](file/manuscript_bls_yc.pdf)
+
+
+***
+
+### Posters
+* Chai, Y. & Garellek, M. 12/2019. Using H1 instead of H1–H2 as an acoustic correlate of glottal constriction. ASA 2019. [poster](file/Chai_Garellek_ASA_F2019.pdf)
+* Chai, Y. & Ye, S. 12/2019. The neutralization of Xiapu Min tones in disyllabic tone sandhi forms. ASA 2019. [poster](file/Chai_ASA_F2019_print.pdf)
+* Chai, Y. 1/2019. The source of creak in Mandarin utterances: F0 or position-motivated? [poster](file/poster_lsa2019_yc.pdf)
+
+***
+
+### Unpublished manuscript
+* Chai, Y. 5/2017. Predicting Discrimination Accuracy of English Vowels by Native-Mandarin Learners. Unpublished master's thesis. University of Colorado Boulder, Boulder, USA. [manuscript](https://escholarship.org/uc/item/44b0m25r)

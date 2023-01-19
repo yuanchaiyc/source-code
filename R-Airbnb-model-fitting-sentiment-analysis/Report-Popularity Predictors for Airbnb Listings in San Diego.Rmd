@@ -1,0 +1,898 @@
+```{r eval=FALSE, echo=F}
+#install.packages("rmarkdown")
+#install.packages("knitr")
+```
+
+```{r echo=FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                     fig.align = 'center',
+                     fig.width=7,
+                     fig.height=5,
+                     options(warn=-1))
+
+suppressMessages(library(rmarkdown))
+suppressMessages(library(knitr))
+suppressMessages(library(tidyverse))
+suppressMessages(library(ggplot2))
+suppressMessages(library(glmnet))
+library(tidytext)
+library(stringr)
+library(scales)
+library(reshape2)
+library(textcat)
+library(grid)
+library(gridExtra)
+
+theme_set(theme_minimal())
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+# Popularity Predictors for Airbnb Listings in San Diego
+## Sherry Yueyi Jiang, Yuan Chai, Nese Demir, & Duk-Ho Jung
+## UCSD Psychology & Linguistics Department
+
+
+----------------------
+
+
+### 1. Introduction
+
+
+Airbnb is one of the most popular platforms for short-term lodgings. Although there has been extensive research about how Airbnb and similar online platforms contribute to “sharing economy” (Zervas, Proserpio, & Byers, 2017), there is a lack of publicly available statistical findings about which factors drive the popularity of Airbnb bookings. Previous studies investigating purchase intention on Airbnb have revealed that Airbnb booking is most affected by perceived value, satisfaction and price sensitivity (Liang, Choi, & Joppe, 2018). Given the rise of Airbnb, it is crucial to examine which factors (i.e., the specifics that construct the perceived value and satisfaction) affect intentions on booking on this online platforms. 
+
+The purpose of this paper is three-fold. First, We find out which factors and how many factors are most effective to be included in the model to predict the popularity of an Airbnb listing. Second, we used sentiment analysis to determine whether the factors that correlate with the popularity of the listing are reflected in the reviewers’ comments. Third, we used the sentiment score to predict numeric review rating. This is to assess whether there is consistency between the review comment data and the numeric review data, and can add to the authenticity of the data.
+
+We hope the results of our analysis will help the users (both hosts and guests) of Airbnb and similar online marketplaces by identifying factors which are contributing to the increase of the consumer’s willingness to book accommodations. We would like to raise awareness of hosts who would like to increase their bookings by making their property more attractive for guests. In addition, we aim to help the users who are seeking accommodation by having them make informed decisions and make their accommodation search more time-efficient. The users will be able to identify potential popular hosts and secure bookings in advance using the most effective predictors found in the current study.
+
+
+
+----------------------
+
+
+### 2. Data
+
+Our data of Airbnb listings consists of information about 11,768 properties in San Diego, US, compiled on October 11th, 2018. Some information in the listing data relates to the choices of the hosts (e.g., description length of the listing, house rules, cleaning fee, minimum nights of required stay, cancellation policy, instant booking). Other factors in the listing data refer to property-specific information that cannot be easily controlled by the hosts (e.g., the location of the listing including its distance to the nearest tourist attraction, property type, number of reviews, the number of bedrooms and bathrooms).
+
+Our data of Airbnb customer reviews consists of 344,404 comments across 9,759 properties in San Diego. Information in this review data includes date, reviewer id and reviewer comments. It should be noted that the data was collected from 2008-2018. We only selected review comments that share host listing ID with the listing data.
+
+
+```{r echo=FALSE, message = FALSE}
+SD.list = read.csv("/Users/yuanchai/Documents/School/UCSD/Fall 2018/PSYC201a/final project/data/listings.csv")
+```
+
+
+
+```{r echo=FALSE, message = FALSE}
+load("/Users/yuanchai/Documents/School/UCSD/Winter 2019/PSYC201b/final project/cleaned_review.rdata") 
+
+
+#sentiment analysis in reviwers' comments
+
+review_comments <- cleaned_review %>%
+  select(listing_id, reviewer_id, reviewer_name, comments) %>%
+  unnest_tokens(word, comments) %>%
+  filter(!word %in% stop_words$word,
+         str_detect(word, "^[a-z']+$"))
+
+#use AFINN lexicons
+AFINN <- sentiments %>%
+  filter(lexicon == "AFINN") %>%
+  select(word, afinn_score = score)
+
+review_sentiment <- review_comments %>%
+  inner_join(AFINN, by = "word") %>%
+  group_by(listing_id ) %>%
+  summarize(sentiment = mean(afinn_score))
+
+review_sentiment = data.frame(id =  review_sentiment$listing_id, reviewer_sentiment = review_sentiment$sentiment)
+                   
+SD.list = merge(SD.list, review_sentiment, by = "id", all.x = TRUE)
+
+```
+
+
+
+To interpret the effect of location in our data, we selected 20 top-rated tourist attractions in San Diego and obtained the longitude and latitude information for each of these places via Google Maps. Next, we calculated the distance from each Airbnb listing to these twenty tourist attractions, and integrated this information in our original dataset.
+
+```{r echo=F}
+SD.tour = read.csv("/Users/yuanchai/Documents/School/UCSD/Fall 2018/PSYC201a/final project/data/tourism.csv")
+print(as.character(SD.tour$tourism))
+```
+
+----------------------
+
+
+### 3. Data Building
+
+The dependent variable is the popularity of an Airbnb listing. We define popularity by the occupancy rate of a hotel. Airbnb does not reveal the booking data of each listing, but the number of review has been used to estimate the booking rate in previous research (Brousseau, Metcalf, & Yu, 2015; Cox, 2019; Marqusee, 2015). The number of review is usually lower than the booking rate because there are customers that do not leave a review after the stay and therefore need to be inflated to estimate the occupancy rate. Brousseau et al. (2015) claimed that New York Airbnb listing has a review rate of 30.5%. Marqusee (2015) claimed that in San Francisco, Airbnb has a review rate of 72%. Cox (2019) used a medial number - 50% as the review rate. This paper adopted the criterion by Cox (2019), increasing the number of review twice to estimate the occupancy rate of a listing. The dependent variable of this study was the number of days when each listing was booked during a year, calculated as: the number of reviews per month × 2 × minimum requirement of booking × 12 months. During this process, we found that the minimum requirement of booking of some of the listings were set as high as half a year, yet they received review every one or two days, indicating that the information about their minimum requirement of booking was inaccurate. Thus, we excluded the listings whose minimum booked days of a listing per year exceeds 365 days from the analyses. 
+
+
+```{r echo=F}
+SD.list <- SD.list %>%
+  mutate(day.month = reviews_per_month * minimum_nights * 2) %>%
+  filter(day.month <= 30.41667) %>%
+  mutate(day.year = day.month * 12) %>% 
+  select(-day.month) # we decided to use day.year rather than day.month
+```
+
+
+We included a number of variables as the possible predictors of the occupancy rate at the initial stage. The variables retrieved from the dataset directly are: 1) reviews per month; 2) minimum nights the hosts require the customers to book; 3) the nightly price; 4) the number of days the listing is available per year; 5) the latitude; 6) the longitude; 7) the review scores (overall rating; rating on the description accuracy, the cleanliness, the communication, the location, and the value); 8) the property type (i.e. apartment, suite, house, etc.); 9) the number of accommodates; 10) the number of additional guests allowed; 11) the number of amenities.
+
+
+```{r echo=F}
+suppressMessages(library(stringr))
+
+#our starting points
+basics <- c("reviews_per_month", 
+            "minimum_nights",
+            "number_of_reviews",
+            "price", 
+            "availability_365", 
+            "latitude","longitude",
+            "day.year",
+            "id")
+#the descriptions
+descriptions <-  c("summary", "space", "description", "neighborhood_overview", 
+                   "notes", "transit", "access", "interaction", "house_rules")
+#review scores
+review.scores <- c("review_scores_rating", "review_scores_accuracy",
+                   "review_scores_cleanliness", "review_scores_checkin",
+                   "review_scores_communication", "review_scores_location",
+                   "review_scores_value")
+#additional predictors
+predictors.added <- c("property_type",
+                      "accommodates", "guests_included",
+                      "amenities",
+                      "review_scores_cleanliness",
+                      "review_scores_location",
+                      "first_review", "last_review")
+
+SD.air <- SD.list %>% 
+  select(c(basics), 
+         c(descriptions), 
+         c(review.scores), 
+         c(predictors.added))
+
+SD.air <- SD.air %>%
+  mutate(price = as.numeric(gsub('[$,]', '', SD.air$price)),
+         # transform non-numeric price values into numeric values
+         amenities = str_count(SD.air$amenities, '\\w+'))
+         # calculate the number of amenities by counting the words
+
+```
+
+We also created a few new variables based on the information provided by the dataset. The first one is the distance from each listing to its nearest tourist attraction. As Section 2 introduced, we selected 20 most popular tourist attractions in San Diego, calculated the distance from each listing to each of those 20 tourist attractions based on their longitude and latitude using the R package &quot;geosphere", and stored the minimum distance for each listing. This new variable represents how close a listing is to the tourist attraction(s).
+
+```{r eval=F}
+install.packages("geosphere")
+```
+
+```{r echo=F}
+suppressMessages(library(geosphere))
+
+dist <- data.frame(c(1:length(SD.air$latitude)))
+for (i in 1: length(SD.tour$tourism)) {
+  a <- c()
+  for (j in 1: length(SD.air$latitude)){
+    a <- rbind(a, distm(c(abs(SD.air$longitude[j]), SD.air$latitude[j]), 
+                        c(abs(SD.tour$longitude[i]), SD.tour$latitude[i]), 
+                        fun = distHaversine))
+  }
+  dist <- cbind(dist,a)
+}
+
+dist <- dist[,c(2:(length(SD.tour$tourism)+1))]
+
+for (i in 1: length(SD.air$latitude)){
+  SD.air$mini.dist[i] <- min(as.numeric(as.character(dist[i,])))
+  SD.air$mini.loc.x[i] <- which.min(as.numeric(as.character(dist[i,]))) 
+  # which tourist attraction each listing is closest to (1 to 20)
+}
+
+for (i in 1:length(SD.tour$tourism)) {
+  SD.air$mini.loc.name[SD.air$mini.loc.x==i] = as.character(SD.tour$tourism[i])
+  # the name of each tourist attraction
+  SD.air$tourism.longitude[SD.air$mini.loc.x==i] = SD.tour$longitude[i]
+  # the longitude of the closest tourist for future use
+}
+```
+
+The second set of variables we created was the length of description. The hosts can include a summary, a note, and a description of their space, neighborhood, transit condition, access, interaction, and house rules on their listing page. We calculated the length of each type of description and hypothesized the length of the descriptions provided by the hosts may affect the price they set. Similarly, the number of amenities was calculated in the same way.
+
+```{r echo=F}
+SD.air <- SD.air %>% 
+  mutate(summary = str_count(SD.air$summary, '\\w+'),
+         space = str_count(SD.air$space, '\\w+'),
+         description = str_count(SD.air$description, '\\w+'),
+         neighborhood_overview = str_count(SD.air$neighborhood_overview, '\\w+'),
+         notes = str_count(SD.air$notes, '\\w+'),
+         transit = str_count(SD.air$transit, '\\w+'),
+         access = str_count(SD.air$access, '\\w+'),
+         interaction = str_count(SD.air$interaction, '\\w+'),
+         house_rules = str_count(SD.air$house_rules, '\\w+'))
+SD.air$length.total <- SD.air %>% select(c(descriptions)) %>% apply(1, sum)
+```
+
+The last variable we created was how long the listing had been open. This variable was calculated by counting the number of days from the date the listing received the first review to the date it received its last review.
+
+```{r echo=F}
+SD.air <- SD.air %>% 
+  mutate(first_review = as.Date(first_review, format="%m/%d/%Y"),
+         last_review = as.Date(last_review, format="%m/%d/%Y")) %>% 
+  mutate(how.long = as.numeric(last_review - first_review)) %>%
+  select(-first_review, -last_review)
+```
+
+We also added sentiment analysis scores as one of the independent variables. The reason why sentiment analysis score was incorporated into the model is that review comments reflect the buyers’ perceived satisfaction. Therefore, we expect that the popularity of booking can be predicted by the sentiment of the buyers’ review comments. 
+
+In order to fulfill the assumption of normal distribution, we log transformed 17 variables which had a positive skew in the distribution: 1) the number of reviews per month; 2) minimum requirement of booking; 3) number of reviews; 4) price; the length of description of 5) space; 6) neighborhood; 7) notes; 8) transit; 9) access; 10) interaction; 11) house rules; 12) the number of accommodates; 13) the number of guests included; 14) the number of amenities; 15) the distance to the nearest tourist attraction; 16) the minimum booked days of a listing per year; 17) the number of days the listing had been open. In order to avoid the bias towards variables with high variances, we transformed all the independent variables to z-score.
+
+
+
+```{r echo=F}
+# filter
+SD.air <- SD.air %>% 
+  # filter-out the data points with no price or no availability
+  filter(price != 0 & 
+           availability_365 !=0 & 
+           minimum_nights != 0) %>% 
+  # add the smallest unit to the zeros; avoid inf after log
+  mutate(neighborhood_overview = neighborhood_overview + 1,
+         notes = notes + 1,
+         transit = transit + 1,
+         access = access + 1,
+         interaction = interaction + 1,
+         house_rules = house_rules + 1,
+         amenities = amenities + 1,
+         summary = summary + 1,
+         space = space + 1,
+         description = description + 1,
+         length.total = length.total + 1,
+         how.long = how.long + 1)
+
+```
+
+```{r eval=F, include = F}
+#' We generated the histogram of each predictors with numeric values
+#' to see if it is positively skewed or not.
+hist.SD <- SD.air %>% 
+  select(-property_type, -mini.loc.x,-mini.loc.name, -id)
+  # excluded the nominal predictors
+for (i in colnames(hist.SD)) {
+  hist(hist.SD[,i], xlab = i)}
+
+```
+
+```{r echo=F}
+# the final list of the predictors that need to be log-transformed
+log.list = c("reviews_per_month",
+             "minimum_nights",
+             "number_of_reviews",
+             "price",
+             "space",
+             "neighborhood_overview",
+             "notes",
+             "transit",
+             "access",
+             "interaction",
+             "house_rules",
+             "accommodates",
+             "guests_included",
+             "amenities",
+             "mini.dist",
+             "day.year",
+             "how.long")
+
+# log-transformation of each predictors in the log.list
+for (i in log.list) { 
+  SD.air[,i] = log10(SD.air[,i])
+}
+```
+
+```{r echo=F}
+#z-score
+
+z.score = function(x) {
+  mean = mean(x, na.rm = T)
+  sd = sd(x, na.rm = T)
+  z = (x-mean)/sd
+  return(z)
+}
+  
+SD.zscore = SD.air
+#SD.original
+#SD.zscore = SD.original
+for (i in 1:ncol(SD.zscore)) {
+  if (!(colnames(SD.zscore)[i] %in% c("mini.loc.x", "mini.loc.name", "listing_id", "property_type")))
+    {SD.zscore[,i] = z.score(SD.zscore[,i])}
+  
+}
+
+#SD.original = SD.air
+
+SD.air = SD.zscore
+```
+
+
+
+----------------------
+
+### 4. Model Fitting
+
+#### 4.1 Results
+
+In order to select the most effective predictors of the occupancy rate from the 32 predictors, we used lasso regularization. Regularization was used to avoid over-fitting. In order to cross-validate the fitted model, we used 3/4 of the data as the training set and the remaining 1/4 of the data as the test set. Figure 1 shows the root mean squared error (rmse) of the model at each penalty level. The x-axis shows the rmse of the training set while the y-axis shows the rmse of the test set.
+
+```{r echo=F}
+################### what is the most effective single predictor?
+
+# redefine the property type
+SD.air$house.apart_other = 1/2*(SD.air$property_type == "Apartment" 
+                                | SD.air$property_type == "House") -
+  1/2*(!SD.air$property_type %in% c("Apartment", "House"))
+SD.air$house_apart = 1/2*(SD.air$property_type == "House") -
+  1/2*(SD.air$property_type == "Apartment") +
+  0*(!SD.air$property_type %in% c("Apartment", "House"))
+
+#remove date variable and directly correlated variables
+SD.air = SD.air %>%
+  select(-mini.loc.x, -mini.loc.name, -reviews_per_month, 
+         -minimum_nights, -number_of_reviews, -property_type, -tourism.longitude, -id) %>%
+  na.omit()
+
+# lasso regularization and cross-validation
+N = nrow(SD.air)
+k = 4 
+train.n <- round(N*(k-1)/k)  
+train.idx <- sample(N, train.n, replace = F) 
+
+# training set
+SD.train <- SD.air[train.idx, ] 
+SD.y.train <- SD.train$day.year 
+SD.train <- as.matrix(SD.train[,!(names(SD.train) %in% c('day.year'))])  
+
+# test set
+SD.test <- SD.air[-train.idx, ] 
+SD.y.test <- SD.test$day.year 
+SD.test <- as.matrix(SD.test[,!(names(SD.test) %in% c('day.year'))]) 
+
+fit.lasso <- glmnet(SD.train,
+                    y = SD.y.train,
+                    alpha = 1)
+lasso.result = as.matrix(coef(fit.lasso))
+pred.test = cbind(rep(1, nrow(SD.test)), SD.test) %*% lasso.result
+rmse.test = sqrt(colMeans((pred.test - matrix(rep(SD.y.test, ncol(lasso.result)), nrow=nrow(SD.test), ncol=ncol(lasso.result)))^2))
+
+pred.train = cbind(rep(1, nrow(SD.train)), SD.train) %*% lasso.result
+rmse.train = sqrt(colMeans((pred.train - matrix(rep(SD.y.train, ncol(lasso.result)), nrow=nrow(SD.train), ncol=ncol(lasso.result)))^2))
+
+df = data.frame(rmse.train = rmse.train, rmse.test = rmse.test, set = 0:(ncol(lasso.result)-1))
+
+
+plot1 = df %>%
+  ggplot(aes(x = rmse.train, y = rmse.test)) +
+  geom_point() +
+  geom_text(aes(label = set),  vjust = -1, size = 3)+
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  ggtitle('Figure 1. RMSE at Different Penalty Level')+
+  xlab("The RMSE of Training Set") +
+  ylab("The RMSE of Testing Set") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_vline(aes(xintercept = df$rmse.train[df$set==10]), linetype = "dotted")
+  
+print(plot1)
+
+```
+
+
+Figure 1 shows that the rmse became smaller as the penalty became smaller and more predictors were added to the model. However, the reduction rate of the rmse becomes lower as the penalty becomes smaller, indicating that although adding predictors reduces the error of the training model and the test model, predictors that surfaced when the penalty is large is more effective than those that surfaced when the penalty is small. We drew the line at Model 10 because Model 10 explained more than half of the variances, and the reduction rate of the rmse after Model 10 became lower.
+
+The final model included eight independent predictors (arranged in descending order of the absolute value of the coefficient): 1) price; 2) number of amenities; 3) the length of the account history; 4) the review score on accuracy; 5) the length of host's description of the transportation condition around the property; 6) the availability; 7) the review score on value; 8) the review score on check in. The occupancy is positively related to amenity number, review score on accuracy, review score on value, the length of description of the transportation, and review score on check in, and negatively related to price and yearly availability. The coefficient associated with each predictor is presented in the table below. The relation between the occupancy rate/popularity of a property and those eight predictors is plotted in Figure 2. The red line represents the lasso regression results while the yellow line represents the linear regression results. It can be seen that the slope of lasso regression is smaller than that of linear regression, indicating that lasso regression is less skewed by outliers.
+
+
+```{r echo=F}
+
+
+coef.lasso <- cbind(variable = row.names(lasso.result), lasso.result)
+rownames(coef.lasso) <- NULL
+
+
+coef.lasso = coef.lasso %>%
+  as.data.frame() %>%
+  select(variable, s10) %>%
+  filter(s10 != 0) %>%
+  mutate(s10 = round(as.numeric(as.character(s10)),3)) %>%
+  arrange(desc(abs(s10))) %>%
+  filter(variable != "(Intercept)") %>%
+  as.data.frame() %>%
+  mutate(variable = as.character(variable))
+
+colnames(coef.lasso)[which(names(coef.lasso) == "s10")] <- "coefficient"
+
+coef.lasso$variable[coef.lasso$variable == "how.long"] = "length of account history"
+coef.lasso$variable[coef.lasso$variable == "review_scores_accuracy"] = "review score on accuracy"
+coef.lasso$variable[coef.lasso$variable == "transit"] = "Word count on transit description"
+coef.lasso$variable[coef.lasso$variable == "availability_365"] = "Yearly availability"
+coef.lasso$variable[coef.lasso$variable == "review_scores_value"] = "review score on value"
+coef.lasso$variable[coef.lasso$variable == "review_scores_checkin"] = "review score on check-in"
+
+print(coef.lasso)
+
+```
+
+
+
+```{r echo=F, Fig1, fig.height=10, fig.width=10}
+
+p1 = SD.air %>% 
+  ggplot(aes(x=price, y=day.year)) +
+  geom_jitter(alpha= 0.3, size= 1, color="lightblue") +
+  geom_abline(slope = -0.131, intercept = 0,
+              na.rm = FALSE, show.legend = NA, color = "red", size = 1) +
+  geom_smooth(method = lm, color = "yellow", size = 1, se = FALSE)+
+  ggtitle('Price')+
+  scale_x_continuous(name='')+
+  scale_y_continuous(name='')+
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+p2 = SD.air %>% 
+  ggplot(aes(x=amenities, y=day.year)) +
+  geom_jitter(alpha= 0.3, size= 1, color="lightblue") +
+  geom_abline(slope = 0.119, intercept = 0,
+              na.rm = FALSE, show.legend = NA, color = "red", size = 1) +
+  geom_smooth(method = lm, color = "yellow", size = 1, se = FALSE)+
+  ggtitle('Number of amenities')+
+  scale_x_continuous(name='')+
+  scale_y_continuous(name='')+
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+p3 = SD.air %>% 
+  ggplot(aes(x=how.long, y=day.year)) +
+  geom_jitter(alpha= 0.3, size= 1, color="lightblue") +
+  geom_abline(slope = 0.099, intercept = 0,
+              na.rm = FALSE, show.legend = NA, color = "red", size = 1) +
+  geom_smooth(method = lm, color = "yellow", size = 1, se = FALSE)+
+  ggtitle('Account history')+
+  scale_x_continuous(name='')+
+  scale_y_continuous(name='')+
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+p4 = 
+  SD.air %>% 
+  ggplot(aes(x=review_scores_accuracy, y=day.year)) +
+  geom_jitter(alpha= 0.3, size= 1, color="lightblue") +
+  geom_abline(slope = 0.062, intercept = 0,
+              na.rm = FALSE, show.legend = NA, color = "red", size = 1) +
+  geom_smooth(method = lm, color = "yellow", size = 1, se = FALSE)+
+  ggtitle('Review score on accuracy')+
+  scale_x_continuous(name='')+
+  scale_y_continuous(name='')+
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+p5 = 
+  SD.air %>% 
+  ggplot(aes(x=transit, y=day.year)) +
+  geom_jitter(alpha= 0.3, size= 1, color="lightblue") +
+  geom_abline(slope = 0.033, intercept = 0,
+              na.rm = FALSE, show.legend = NA, color = "red", size = 1) +
+  geom_smooth(method = lm, color = "yellow", size = 1, se = FALSE)+
+  ggtitle('Word count of transit description')+
+  scale_x_continuous(name='')+
+  scale_y_continuous(name='')+
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+p6 = SD.air %>% 
+  ggplot(aes(x=transit, y=day.year)) +
+  geom_jitter(alpha= 0.3, size= 1, color="lightblue") +
+  geom_abline(slope = -0.022, intercept = 0,
+              na.rm = FALSE, show.legend = NA, color = "red", size = 1) +
+  geom_smooth(method = lm, color = "yellow", size = 1, se = FALSE)+
+  ggtitle('Yearly availability')+
+  scale_x_continuous(name='')+
+  scale_y_continuous(name='')+
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+p7 = 
+  SD.air %>% 
+  ggplot(aes(x=review_scores_value, y=day.year)) +
+  geom_jitter(alpha= 0.3, size= 1, color="lightblue") +
+  geom_abline(slope = 0.006, intercept = 0,
+              na.rm = FALSE, show.legend = NA, color = "red", size = 1) +
+  geom_smooth(method = lm, color = "yellow", size = 1, se = FALSE)+
+  ggtitle('Review score on value')+
+  scale_x_continuous(name='')+
+  scale_y_continuous(name='')+
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+p8 = 
+  SD.air %>% 
+  ggplot(aes(x=review_scores_checkin, y=day.year)) +
+  geom_jitter(alpha= 0.3, size= 1, color="lightblue") +
+  geom_abline(slope = 0.006, intercept = 0,
+              na.rm = FALSE, show.legend = NA, color = "red", size = 1) +
+  geom_smooth(method = lm, color = "yellow", size = 1, se = FALSE)+
+  ggtitle('Review score on check-in')+
+  scale_x_continuous(name='')+
+  scale_y_continuous(name='')+
+  theme_minimal()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+grid.arrange(p1,p2,p3,p4,p5,p6,p7,p8, ncol=3, 
+             left = textGrob("Yearly occupancy rate (log and z-score)", rot = 90, vjust = 1),
+             top = "Figure 2. Occupancy Rate by Predictors (yellow: linear regression; red: lasso regression)") 
+
+
+
+
+```
+
+----------------------
+
+
+#### 4.2. Discussion
+
+
+The first goal of this study is to identify the most effective predictors for the occupancy rate of the Airbnb listings in San Diego. The chosen model yielded from the lasso regularization effectively explain most variances in both the training data and the test data.
+
+The most effective two predictors for the occupancy rate of the Airbnb listings in San Diego are the nightly price and the number of amenities in a household. The lower the price of a property is and the more amenities there are, the more popular the property will be.
+
+People are referring to the review score when deciding which place to stay as well. And the customers concerns most on the reviews on the accuracy of the hosts' description, the check-in experience, and the value of the consumption.
+
+Location is important to the booking rate as well. As the results suggest, a more detailed description on the transportation system around the property provided by the host attracts more customers. 
+
+The availability of the listing is negatively related to the occupancy rate. The possible reasons are that listings that have a high availability rate either 1) do not update their availability in time and are actually not available most of the time; or 2) "probably don't have the owner present, could be illegal, and more importantly, are displacing residents. (Cox, 2019)"
+
+
+----------------------
+
+
+### 5. Text and Sentiment Analysis
+
+#### 5.1 Results
+
+To understand what attributes customers are looking for the most and what features Airbnb hosts wanted most to showcase, we analyzed the most common words and bigrams (pairs of adjacent words) across hosts’ descriptions and reviewers’ comments. To increase the validity of the analysis, we also excluded non-English words in our dataset. As is shown in Figure 3, the most popular topics seem to revolve around the location, cleanliness, quietness, convenience and neighbours (e.g., “location”, “clean”, “beach”, “restaurants”, “walking distance”, “street parking”, “quiet neighborhood”,  “time”) in the reviewers’ comments. This is consistent with the important factors in the description that the hosts have focused on (e.g., “beach”, “restaurants”, “park”, “access”, “street parking”, “downtown”, “centrally located”). In addition to these factors, the hosts also tend to showcase their amenities and space (e.g., “kitchen”, “bathroom”, “queen size”, “master bedroom”).
+
+```{r echo=F, message=FALSE}
+
+#words usage analysis in reviewers' comments
+
+review_words <- cleaned_review %>%
+  distinct(comments, .keep_all = TRUE) %>%
+  unnest_tokens(word, comments, drop = FALSE) %>%
+  distinct(id, word, .keep_all = TRUE) %>%
+  anti_join(stop_words, by = "word") %>%
+  filter(str_detect(word, "[^\\d]")) %>%
+  group_by(word) %>%
+  mutate(word_total = n()) %>%
+  ungroup()
+
+
+word_counts <- review_words %>%
+  count(word, sort = TRUE)
+
+
+word.review.plot = word_counts %>%
+  head(20) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col(fill = "lightblue") +
+  scale_y_continuous(labels = comma_format()) +
+  coord_flip() +
+  labs(title = "Reviewers Most Common Words",
+       y = "# of uses") +
+  theme(legend.position = "none",
+        axis.title.x=element_blank(),
+        axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+   theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) 
+
+
+review_bigrams <- cleaned_review %>%
+  unnest_tokens(bigram, comments, token = "ngrams", n = 2)
+
+bigrams_separated <- review_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+
+bigram_counts$word <- paste(bigram_counts$word1,"",bigram_counts$word2)
+
+
+bigram.review.plot = bigram_counts %>%
+  head(20) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col(fill = "lightblue") +
+  scale_y_continuous(labels = comma_format()) +
+  coord_flip() +
+  labs(title = "Reviewers Most Common Bigrams",
+       y = "# of uses") +
+  theme(legend.position = "none",
+        axis.title.x=element_blank(),
+        axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+   theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) 
+
+#sentiment analysis in reviwers' comments
+
+review_comments <- cleaned_review %>%
+  select(listing_id, reviewer_id, reviewer_name, comments) %>%
+  unnest_tokens(word, comments) %>%
+  filter(!word %in% stop_words$word,
+         str_detect(word, "^[a-z']+$"))
+
+#use AFINN lexicons
+AFINN <- sentiments %>%
+  filter(lexicon == "AFINN") %>%
+  select(word, afinn_score = score)
+
+review_sentiment <- review_comments %>%
+  inner_join(AFINN, by = "word") %>%
+  group_by(listing_id ) %>%
+  summarize(sentiment = mean(afinn_score))
+
+
+SD.list.clean = SD.list %>% 
+  filter(reviewer_sentiment != "NA")
+              
+SD.list.clean = SD.list.clean[textcat(SD.list.clean$description) =="english",]
+
+#manually remove leftover rows that are non-english
+
+SD.list.clean = SD.list.clean %>%
+              filter(! (id %in% c(23102868, 25356568, 22324454, 22995920, 23840755, 20127521)))
+
+
+SD.list.clean = SD.list.clean %>% 
+  filter(description != "NA") %>%
+  mutate(description = as.character(description))
+
+#words usage analysis in hosts' descriptions
+
+host_review_words <- SD.list.clean %>%
+  distinct(description, .keep_all = TRUE) %>%
+  unnest_tokens(word, description, drop = FALSE) %>%
+  distinct(id, word, .keep_all = TRUE) %>%
+  anti_join(stop_words, by = "word") %>%
+  filter(str_detect(word, "[^\\d]")) %>%
+  group_by(word) %>%
+  mutate(word_total = n()) %>%
+  ungroup()
+
+
+host_word_counts <- host_review_words %>%
+  count(word, sort = TRUE)
+
+
+word.host.plot = host_word_counts %>%
+  head(20) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col(fill = "lightblue") +
+  scale_y_continuous(labels = comma_format()) +
+  coord_flip() +
+  labs(title = "Host Most Common Words",
+       y = "# of uses") +
+  theme(legend.position = "none",
+        axis.title.x=element_blank(),
+        axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+   theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) 
+
+
+host_review_bigrams <- SD.list.clean %>%
+  unnest_tokens(bigram, description, token = "ngrams", n = 2)
+
+host_bigrams_separated <- host_review_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+host_bigrams_filtered <- host_bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+host_bigram_counts <- host_bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+
+host_bigram_counts$word <- paste(host_bigram_counts$word1,"",host_bigram_counts$word2)
+
+
+bigram.host.plot = host_bigram_counts %>%
+  head(20) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col(fill = "lightblue") +
+  scale_y_continuous(labels = comma_format()) +
+  coord_flip() +
+  labs(title = "Host Most Common Bigrams",
+       y = "# of uses") +
+  theme(legend.position = "none",
+        axis.title.x=element_blank(),
+        axis.title=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, size = 12)) +
+   theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) 
+
+grid.arrange(word.review.plot, word.host.plot, bigram.review.plot, bigram.host.plot, ncol=2, top = "Figure 3. Word Usage in Reviews and Host Descriptions") 
+```
+
+To further investigate the sentiment of the reviews for the host listings, we ran a sentiment analysis on the reviewers’ comments. This analysis determines how the customers are generally feeling by using a lexicon (i.e., a predetermined dictionary of words). By using AFINN dictionary, we assigned words with a score that runs between -5 and 5, with negative scores indicating negative sentiment and positive scores indicating positive sentiment (Nielsen, 2011). To get a sense of the overall distribution of the mean sentiment scores for the host listings in the reviewers' comments, we plotted the distribution of Average Sentiment Score across host listings.
+
+```{r, echo=F, message=F}
+
+#codes for sentiment analysis for the reviewers' comments are embedded in the previous chunk of codes
+
+ggplot(SD.list, aes(x=reviewer_sentiment)) +
+  geom_histogram(binwidth = 0.05,  fill="lightblue") +
+  labs(title = "Figure 4. Distribution of Average Sentiment Score across Host Listings",
+       x="Mean AFFIN Score", y="Count") +
+    theme_minimal()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  theme(legend.position = "none",
+        axis.title.x=element_blank(),
+        axis.title=element_text(size=12,face="bold"),
+        plot.title = element_text(hjust = 0.5, face="bold", size = 14))
+ 
+
+```
+
+
+Figure 4 shows that most reviewer’s comments that are captured by AFFIN lexicon have positive vibe and the distribution of the mean AFFIN scores is approximately normal with a mean of 2. We also performed an analysis on hosts' descriptions using the same method. Pearson correlation of 0.374 indicates that reviewers' accuracy score is positively correlated with sentiment of the reviewers' comments. 
+To analyze whether sentiments of reviewers’ comments and hosts’ descriptions can predict reviewers’ accuracy scores, we used multiple linear regression. The result shows that sentiment scores of both reviewers and hosts significantly predict the accuracy scores (F(2, 8527) = 701, R^2 = 0.141, p < 0.001. Specifically, the reviewers’ sentiment scores is a strong predictor for the accuracy scores (t = 37.41, p < 0.001), and hosts’ sentiment scores also predicts the accuracy scores (t = -3.12 , p = 0.002).
+
+```{r,echo=F, include = F}
+
+host_description <- SD.list.clean %>% 
+  filter(!is.na(description)) %>% 
+  select(id, description) %>% 
+  group_by(row_number()) %>% 
+  ungroup() %>%
+  unnest_tokens(word, description) %>%
+  anti_join(stop_words) #excluding stop words
+
+
+host_sentiment_messages <- host_description %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(id) %>%
+  summarize(sentiment = mean(score),
+            words = n()) %>%
+  ungroup() 
+
+#merge host sentiment data with host_review data
+
+host_reviewer_sentiment = left_join(SD.list.clean, host_sentiment_messages, by = "id" )
+
+#remove NAs
+host_reviewer_sentiment <- host_reviewer_sentiment[complete.cases(host_reviewer_sentiment), ]
+
+#rename host's variables
+names(host_reviewer_sentiment)[4:5]<- c("host_sentiment", "host_words")
+
+#review score accruacy data
+review_scores_accuracy = SD.list.clean %>%
+           select(id, review_scores_accuracy)
+
+#merge data
+host_reviewer_accruacy = left_join(host_reviewer_sentiment, review_scores_accuracy, by = "id" )
+
+#remove NAs
+host_reviewer_accuracy = host_reviewer_accruacy %>%
+  filter(host_reviewer_accruacy != "NA")
+
+
+#can reviewer and host's sentiment score predict accuracy?
+#anova(lm(review_scores_accuracy ~ reviewer_sentiment + host_sentiment, data = host_reviewer_accruacy))
+
+#yes, reviewer's sentiment score can predict accuracy score
+
+# cor(host_reviewer_accruacy$review_scores_accuracy, host_reviewer_accruacy$reviewer_sentiment )
+```
+
+
+#### 5.2 Discussion
+
+We found that the model including both sentiments of reviewers’ comments and hosts’ descriptions can predict reviewers’ accuracy. As expected, customers’ review sentiment attribute to the property’s accuracy rating with positive sentiment predicts higher accuracy ratings (Beta= 0.50, p < 0.001). Surprisingly, we found that hosts’ sentiment in the descriptions negatively predicts accuracy scores (Beta= -0.03, p = 0.002). One possibility is that host who are conservative in describing their properties would lead to lower customers’ expectation which might lead to a general more positive experience.
+
+----------------------
+
+### 6. Conclusion and Future Directions 
+
+The results have shown that the popularity (represented by occupancy rate) of Airbnb in San Diego can be predicted by price, number of amenities, review scores, and the description of nearby transportation condition. Nine out of twenty-eight independent variables can effectively explain the majority of the variances in the popularity of Airbnb booking.
+
+We also found that sentiments of both reviewers' comments and hosts' descriptions can predict numeric review ratings (i.e., accuracy scores). Interestingly, reviewers' sentiment is positivley related to the numeric ratings while hosts' sentiment is negatively related to the ratings. Further investigation is needed to address the discrepancy between hosts and customers' sentiment in properties' overall ratings' prediction.
+
+On the Airbnb users’ side, future research can focus on composing an overall quality score for each host listing for accommodation booking by taking a holistic account of all possible attributes for a good quality stay such as cancellation policy, authenticity of reviews, ratings, host responses and review content. This will potentially reduce the risk of unpleasant stay and motivate the Airbnb hosts to provide quality accommodation. On the hosts’ side, more research should be done to investigate the specifics of the predicting popularity in booking, so that hosts can be more aware of how to improve their booking rates.
+
+----------------------
+
+
+### Citations: 
+
+* Brousseau, F., Metcalf, J., & Yu, M. (2015). Analysis of the impacts of short term rentals on Housing. San Fransico, CA: Budget and Legislative Analyst’s Office.
+* Cox, M. (2019). Inside Airbnb: adding data to the debate. Inside Airbnb [Internet].[cited 19 Mar 2019]. Available: http://insideairbnb.com.
+* Ikkala, T., & Lampinen, A. (2014, February). Defining the price of hospitality: networked hospitality exchange via Airbnb. In Proceedings of the companion publication of the 17th ACM conference on Computer supported cooperative work & social computing (pp. 173-176). ACM.
+* Lena Jingen Liang, HS Chris Choi & Marion Joppe (2018) Understanding repurchase intention of Airbnb consumers: perceived authenticity, electronic word-of-mouth, and price sensitivity, Journal of Travel & Tourism Marketing, 35:1, 73-89.
+* Marqusee, A. (2015). Airbnb and San Francisco: Descriptive Statistics and Academic Research. San Francisco Planning Department.
+* Nielsen, F. Å. (2011). A new ANEW: Evaluation of a word list for sentiment analysis in microblogs. arXiv preprint arXiv:1103.2903.
+* Zervas, G., Proserpio, D., & Byers, J. W. (2017). The rise of the sharing economy: Estimating the impact of Airbnb on the hotel industry. Journal of marketing research, 54(5), 687-705.

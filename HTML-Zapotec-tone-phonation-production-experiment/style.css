@@ -1,0 +1,47 @@
+      body {
+        font-size: 16pt;
+        font-family: Helvetica, Arial;
+      }
+
+      
+      button {
+        font-size: 16pt;
+        font-family: Helvetica, Arial;
+      }
+ 
+      label {
+        font-size: 14pt;
+        text-align: center;
+      }
+      
+
+
+
+      /*Starting new*/
+      #DebriefingDiv {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+      .testdiv {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -moz-transform: translateX(-50%) translateY(-50%);
+        -webkit-transform: translateX(-50%) translateY(-50%);
+        transform: translateX(-50%) translateY(-50%);
+      }
+
+      .buttondiv {
+        text-align:center; 
+      }
+
+
+      #preload {
+        display: none;
+      }

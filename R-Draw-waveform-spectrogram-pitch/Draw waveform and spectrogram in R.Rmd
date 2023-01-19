@@ -1,0 +1,138 @@
+---
+title: "Draw waveform and spectrogram in R"
+author: "Yuan Chai"
+date: "2023-01-19"
+output: html_document
+---
+
+```{r include=FALSE, echo = FALSE, eval = FALSE}
+install.packages("ggplot2")
+install.packages("dplyr")
+install.packages("ggforce")
+install.packages("ggpubr")
+install.packages("scales")
+install.packages("reshape2")
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 5, fig.height = 3, fig.align = "center")
+library(ggplot2)
+library(dplyr)
+library(ggforce)
+library(ggpubr)
+library(scales)
+library(reshape2)
+```
+
+
+## Why do you want to draw waveform and/or spectrogram in R?
+1. Drawing in Praat picture is time-consuming;
+2. Drawing in Praat picture is holistic. If you want to modify one part of the picture, you have to start all over again;
+  + Points 1 and 2 can be overcome by writing Praat script. If you are interested in using Praat script to draw graph, this Praat script that I wrote could be helpful to you (also more than happy to talk about how to adjust it for your purposes). 
+3. Praat picture has less flexibility than R packages such as ggplot2 in terms of aesthetic styles;
+4. You might want to combine waveform and/or spectrogram with other graphs that Praat picture cannot generate. For example, if I want to superimpose the derivatives of a EGG form on the original EGG form, it would be easier to do it using ggplot2;
+5. You might want to model the waveform for statistical analysis.
+
+
+## How to do it?
+### Rationale
+* Waveforms (filtered or unfiltered) are essentially numbers for the pressure variation over time. We can get the pressure value and time points from Praat.
+* Spectrograms are essentially numbers of the pressure variation at different frequency over time. We can get the pressure value at each frequency and each time point from Praat.
+* Pitch is the value of f0 measured over time. We can get the f0 information from Praat. Even better, we can modify the f0 value if it was wrongly tracked by Praat.
+
+### Get started
+#### Prepare the text files
+1. Open a sound file in Praat. (sample_sound.wav)
+2. To get the the waveform text file: Select the sound file &#8594; "Save" &#8594; "Save as text file"
+3. To get the the spectrogram text file: Select the sound file &#8594; "Analyse spectrum" &#8594; "To spectrogram"
+  * Window length: 0.005 (if you want broad band spectrogram)
+  * Maximum frequency (Hz): 5000
+  * Time steps: 0.0001 (to get the maximum resolution)
+  * Frequency steps: 0.0001 (to get the maximum resolution)
+Select the Spectrogram file &#8594; "Save" &#8594; "Save as text file"
+4. To get the pitch text file: Select the sound file &#8594; "Analyse periodicity" &#8594; "To Pitch" &#8594; Select the Pitch file &#8594; "Save" &#8594; "Save as text file"
+  * Note that if Praat tracked the pitch wrongly at some point, you can open the text file, change the "frequency" value of "candidate [1]" for the corresponding frame, and save the text file.
+  * Sometimes, it is easier to manipulate the sound, extract the pitch tier, modify the pitch tier, and save the pitch tier. It would require a different function to convert pitch tier file to dataframe.
+
+#### Go to R
+
+##### Import the helper functions that convert the text file to dataframes
+* convert_spectrogram_to_df() function is written by Matthew Winn. The code is [here](https://github.com/ListenLab/Praat/blob/master/praat_spectrogram_functions.R). The youtube tutorial is [here](https://www.youtube.com/watch?v=23V-7MbR_yk).
+* convert_waveform_to_df() and convert_pitch_to_df() is written by me. I copied all three functions into "praat_waveform_spectrogram_pitch_functions.R"
+
+```{r}
+source("praat_waveform_spectrogram_pitch_functions.R")
+spectrogram = "sample_spectrogram.Spectrogram"
+waveform = "sample_waveform.Sound"
+egg = "sample_EGG.Sound"
+pitch = "sample_pitch.Pitch"
+```
+
+
+##### Convert the text files into dataframes
+```{r}
+#ignore the Warning: NAs introduced by coercion
+df.waveform = convert_waveform_to_df(waveform)
+df.egg = convert_waveform_to_df(egg)
+df.pitch = convert_pitch_to_df(pitch)
+df.spectrogram = convert_spectrogram_to_df(spectrogram)%>%
+  pre_emphasize() %>% # creates Column `Level_preemp`
+  constrain_dynamic_range(column = "Level_preemp",
+                          dynamic_range = 90) # you can change the dynamic_range for your preference. The larger the number, the darker the spectrogram gets.
+```
+
+##### Draw acoustic waveform
+```{r}
+fig.waveform = df.waveform %>%
+  ggplot(aes(x = time, y = value)) +
+  geom_line() +
+  theme_bw()+
+  scale_x_continuous(breaks = function(x) seq(min(x), max(x), length.out = 2), label = label_number(accuracy = 0.01),expand = c(0, 0))+
+  scale_y_continuous(expand = c(0, 0)) +
+  ylab("")+
+  xlab("")+
+  theme(axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 10))
+
+print(fig.waveform)
+
+```
+
+##### Draw EGG waveform
+```{r}
+fig.egg = df.egg %>%
+  ggplot(aes(x = time, y = value)) +
+  geom_line() +
+  theme_bw()+
+  scale_x_continuous(breaks = function(x) seq(min(x), max(x), length.out = 2), label = label_number(accuracy = 0.01),expand = c(0, 0))+
+  scale_y_continuous(breaks = function(x) seq(min(x), max(x), length.out = 2), label = label_number(accuracy = 0.01),expand = c(0, 0)) +
+  ylab("")+
+  xlab("")+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 10))
+print(fig.egg)
+```
+
+##### Draw spectrogram (with pitch)
+```{r}
+fig.spectrogram <- ggplot()+
+  geom_tile(data = df.spectrogram, aes(x = Time, y=Frequency, fill=Level_preemp_dr))+
+  scale_fill_gradient(high="black", low="white", na.value = "white")+
+  geom_point(data = df.pitch, aes(x = time,y=(frequency-40)*31.25),color = "blue",size = 3)+
+  xlab("Time (s)")+
+  scale_x_continuous(breaks = function(x) seq(min(x), max(x), length.out = 2), label = label_number(accuracy = 0.01))+
+  scale_y_continuous(name = "Frequency (Hz)", limits = c(0,5000), breaks = seq(0,5000,1000),
+                     sec.axis = sec_axis(~(./31.25 + 40), name = 'F0 (Hz)'),expand = c(0,0))+
+  theme_bw()+
+  theme(legend.position="none",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 10))
+
+print(fig.spectrogram)
+```
+

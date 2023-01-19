@@ -1,0 +1,3053 @@
+---
+title: "R code for Languages special issue project"
+author: "Yuan Chai"
+date: "3/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                     fig.align = 'center',
+                     fig.width=13,
+                     fig.height=7,
+                     options(warn=-1))
+
+suppressMessages(library(rmarkdown))
+suppressMessages(library(tidyverse))
+suppressMessages(library(ggplot2))
+suppressMessages(library(lme4))
+suppressMessages(library(lmerTest))
+suppressMessages(library(magrittr))
+suppressMessages(library(qwraps2))
+suppressMessages(library(itsadug))
+suppressMessages(library(ggpubr))
+suppressMessages(library(reshape))
+suppressMessages(library(MASS))
+suppressMessages(library(randomForest))
+suppressMessages(library(broom))
+suppressMessages(library(caret))
+suppressMessages(library(gridExtra))
+suppressMessages(library(readr))
+suppressMessages(library(scales))
+suppressMessages(library(e1071))
+suppressMessages(library(tidyr))
+suppressMessages(library(extrafont))
+suppressMessages(library(hqmisc))
+
+
+```
+
+
+## Citation tones
+### Combine data and check pitch halving/doubling
+
+```{r}
+
+
+path = "F:/backup_07032021/Work/fieldwork_xiapu_summer2019/experiment/10_person_experiment/annotation/segment/word-tier/txt"
+setwd(path)
+
+df1 = read_csv("01_F.csv")
+df2 = read_csv("02_M.csv")
+df3 = read_csv("03_F.csv")
+df4 = read_csv("04_M.csv")
+df5 = read_csv("05_F.csv")
+df6 = read_csv("06_M.csv")
+df9 = read_csv("09_F.csv")
+df10 = read_csv("10_M.csv")
+
+df_segment = read_csv("E:/fieldwork_xiapu_summer2019/experiment/10_person_experiment/result/segment/individual_segment_dissertation_0428.csv")
+
+```
+
+
+## no use
+```{r eval = FALSE}
+
+# extract file numbers that have vowel /u/
+df_metau = df_segment %>% filter(vowel == "u")
+extention = c(".wav",".TextGrid")
+namelist.complete = c(outer(df_metau$filename, extention, FUN=paste0))
+df_vowelu = data.frame(filename = namelist.complete)
+write_csv(df_vowelu, "F:/backup_07032021/Work/fieldwork_xiapu_summer2019/experiment/10_person_experiment/annotation/segment/vowel_u_filename.txt")
+
+# used move.py to copy files. 
+# command: python move.py sourcedirectory destindirectory filename.txt
+
+```
+
+
+
+
+
+
+
+```{r}
+
+dfset = c("df1","df2", "df3","df4","df5","df6","df9","df10")
+
+
+df.cite = NULL
+for (i in dfset) {
+  j = get(i)
+  j = j %>%
+    mutate(subject = i)
+  df.cite = rbind(df.cite, j)
+  
+}
+
+
+df.cite = df.cite %>%
+  mutate(duration = seg_End - seg_Start,
+         type = "cite") %>%
+  filter(!str_detect(Filename, "clip|corrupt|Clip"))
+df.cite$filen = str_sub(df.cite$Filename,1,-6)
+
+
+df.cite = df.cite %>%
+  mutate(filen = as.numeric(filen)) %>%
+  filter(filen %in% df_segment$filen) %>%
+  mutate(filen = as.numeric(filen)) %>%
+  mutate(file_sub = paste(subject, filen,sep = "-"))
+
+# Only include target words in the stimuli
+df.cite.meta = left_join(df.cite, df_segment%>%dplyr::select(filen,vowel), by = "filen")
+
+df.full.cite = df.cite.meta %>%
+  dplyr::select(Filename,segment,tone,environment,sandhi,rep,vowel,seg_Start,seg_End,t_ms,file_sub,
+                H1H2c,Energy,HNR05,strF0,pF1, pF2, soe,subject,duration,type,filen)%>%
+  dplyr::rename(h1h2c=H1H2c,hnr=HNR05,f0=strF0,energy=Energy,
+                f1 = pF1, f2 = pF2) %>%
+  mutate(logf0 = log10(f0))
+
+
+nrow(df.full.cite %>% filter(f0 == "NaN"))
+nrow(df.full.cite %>% filter(h1h2c == "NaN"))
+nrow(df.full.cite %>% filter(hnr == "NaN"))
+
+# filter out tokens where energy = 0 and log transform energy
+
+  
+df.full.cite$f0[df.full.cite$energy == 0] = NA
+df.full.cite$logf0[df.full.cite$energy == 0] = NA
+df.full.cite$h1h2c[df.full.cite$energy == 0] = NA
+df.full.cite$hnr[df.full.cite$energy == 0] = NA
+df.full.cite$f1[df.full.cite$energy == 0] = NA
+df.full.cite$f2[df.full.cite$energy == 0] = NA
+  
+df.full.cite = df.full.cite %>%
+  mutate(f0 = as.numeric(f0),
+         h1h2c = as.numeric(h1h2c),
+         hnr = as.numeric(hnr),
+         f1 = as.numeric(f1),
+         f2 = as.numeric(f2))
+
+
+# df4, 155, noisy, discard
+#df.full.cite = df.full.cite %>% filter(!(subject == "df4" & filen == "155" & vowel == "u"))
+# df5, 155, noisy, discard
+#df.full.cite = df.full.cite %>% filter(!(subject == "df5" & filen == "155" & vowel == "u"))
+# df2, 61, noisy, discard
+#df.full.cite = df.full.cite %>% filter(!(subject == "df2" & filen == "61" & vowel == "u"))
+# df4, 110, discard
+#df.full.cite = df.full.cite %>% filter(!(subject == "df4" & filen == "110" & vowel == "u"))
+# df4, 177, discard
+#df.full.cite = df.full.cite %>% filter(!(subject == "df4" & filen == "177" & vowel == "u"))
+
+
+
+```
+
+
+
+### havling/doubling check
+
+```{r}
+
+file = unique(df.full.cite$file_sub)
+
+df.outlier = data.frame(filename=NA, f0=NA, time=NA, problem=NA)
+
+
+for (i in file) {
+  file.check = df.full.cite %>%
+    filter(file_sub == i)
+  for (j in 1:nrow(file.check)){
+    if (j < nrow(file.check)){
+      currentf0 = file.check$f0[j]
+      nextf0 = file.check$f0[j+1]
+      if (is.na(currentf0) || is.na(nextf0)){
+        print("na detected")
+      } else {
+        if (nextf0 <= 0.5 * currentf0) {
+          df.outlier[nrow(df.outlier)+1,] = c(file.check$file_sub[j], file.check$f0[j], file.check$t_ms[j], "halving")
+        print("halving")
+        } else if (nextf0 >= 2 * currentf0) {
+          df.outlier[nrow(df.outlier)+1,] = c(file.check$file_sub[j], file.check$f0[j], file.check$t_ms[j], "doubling")
+        print("doubling")
+        } 
+      }
+    }
+  } 
+}  
+```
+
+
+### Plot f0 track for t2 and 5
+
+```{r}
+length(levels(as.factor(df.full.cite$file_sub)))
+
+
+subjectset = levels(as.factor(df.full.cite$subject))
+
+for (i in subjectset) {
+  f0_track = df.full.cite %>%
+  filter(tone %in% c(2,5) & subject == i) %>%
+  ggplot(aes(x = t_ms, y = f0)) +
+  geom_line() +
+  facet_wrap(.~filen)+
+    xlab(i)
+  print(f0_track)
+}
+```
+
+
+### Exclude f0 tracking error
+```{r}
+
+df.full.cite = df.full.cite %>%
+  mutate(f0_trackerror = ifelse((subject == "df10" & filen %in% c(16, 65, 104)) |
+           (subject == "df2" & filen %in% c(31, 76)) |
+           (subject == "df3" & filen %in% c(29, 68)) |
+           (subject == "df4" & filen %in% c(8, 11, 12, 64, 73, 126)) |
+           (subject == "df5" & filen %in% c(28, 69, 76)), "error", NA))
+
+```
+
+
+
+# Make three point data file for detecting formant outlier
+
+
+```{r}
+
+subjectset = levels(as.factor(df.full.cite$subject))
+
+dfsub.mean.3p = NULL
+
+for (j in subjectset) {
+  dfsub = df.full.cite %>%
+    filter(subject == j)
+  nameset = unique(droplevels(dfsub)$Filename)
+  for (i in nameset) {
+    df.mean = dfsub %>%
+      filter(Filename == i)
+    interval = round(quantile(c(1:nrow(df.mean)),c(1/3, 2/3, 1)),0)
+    
+
+    f1.mean1 = mean(df.mean$f1[1:interval[1]], na.rm = T)
+    f1.mean2 = mean(df.mean$f1[(interval[1]+1):interval[2]], na.rm = T)
+    f1.mean3 = mean(df.mean$f1[(interval[2]+1):interval[3]], na.rm = T)
+    
+    f2.mean1 = mean(df.mean$f2[1:interval[1]], na.rm = T)
+    f2.mean2 = mean(df.mean$f2[(interval[1]+1):interval[2]], na.rm = T)
+    f2.mean3 = mean(df.mean$f2[(interval[2]+1):interval[3]], na.rm = T)
+    
+   
+    
+    df.mean.sub = data.frame(
+                             f1 = c(f1.mean1, f1.mean2, f1.mean3),
+                             f2 = c(f2.mean1, f2.mean2, f2.mean3),
+                             subject = j, 
+                             filen = df.mean$filen[1],
+                             filename = df.mean$Filename[1],
+                             vowel = df.mean$vowel[1],
+                             tone = df.mean$tone[1],
+                             time = c(1:3),
+                             type = "cite")
+    dfsub.mean.3p = rbind(dfsub.mean.3p, df.mean.sub)
+  }
+}
+
+```
+
+
+
+
+## find out datapoint where there is formant outlier
+
+```{r}
+
+vmahalanobis = function (dat) {
+  if (nrow(dat) < 25) {
+    dat$zF1F2 = NA
+    return(dat)
+  }
+  means = c(mean(dat$f1), mean(dat$f2))
+  cov = cov(cbind(dat$f1, dat$f2))
+  
+  dat$zF1F2 = mahalanobis(cbind(dat$f1, dat$f2),
+                          center=means, cov=cov)
+  dat
+}
+
+distance_cutoff = 6
+
+dfsub.mean.3p.formantcheck = dfsub.mean.3p %>%
+  filter(time == 2) %>%
+  group_by(vowel) %>%
+  do(vmahalanobis(.)) %>%
+  ungroup() %>%
+  mutate(formant_outlier = NA)
+
+
+
+for (i in 1:nrow(dfsub.mean.3p.formantcheck)) {
+  if (dfsub.mean.3p.formantcheck$vowel[i] == "u" && dfsub.mean.3p.formantcheck$f2[i] > 1500) {
+    dfsub.mean.3p.formantcheck$formant_outlier[i] = "outlier"
+  } else if (!is.na(dfsub.mean.3p.formantcheck$zF1F2[i])) {
+        if (dfsub.mean.3p.formantcheck$zF1F2[i] > distance_cutoff){
+              dfsub.mean.3p.formantcheck$formant_outlier[i] = "outlier"
+        }
+  }
+}
+
+# visual inspection: df2, 57 outlier
+
+dfsub.mean.3p.formantcheck$formant_outlier[dfsub.mean.3p.formantcheck$subject == "df2" & dfsub.mean.3p.formantcheck$filen == 57 & dfsub.mean.3p.formantcheck$vowel == "y"] = "outlier"
+
+df.full.cite = left_join(df.full.cite, dfsub.mean.3p.formantcheck %>% dplyr::select(subject, filen, vowel, zF1F2, formant_outlier), by = c("subject","filen","vowel"))
+
+```
+
+
+
+
+### Detect f0, h1h2 and hnr outlier
+
+```{r echo = FALSE, results = "hide", message = FALSE}
+
+# when a tracking error detected for f0, exclude its f0 and h1h2 value
+df.full.cite$f0[df.full.cite$f0_trackerror == "error"] = NA
+df.full.cite$logf0[df.full.cite$f0_trackerror == "error"] = NA
+df.full.cite$h1h2c[df.full.cite$f0_trackerror == "error"] = NA
+
+
+# calculate f0 z score
+df.full.cite = df.full.cite %>% group_by(subject) %>%
+  mutate(f0z = (logf0 - mean(logf0, na.rm = T))/sd(logf0, na.rm = T)) %>%
+  ungroup()
+
+# if f0 z score larger than 3, exclude f0 and f0 z score, and h1h2
+df.full.cite$f0z[abs(df.full.cite$f0z[i]) > 3] = NA
+df.full.cite$f0[abs(df.full.cite$f0z[i]) > 3] = NA
+df.full.cite$logf0[abs(df.full.cite$f0z[i]) > 3] = NA
+df.full.cite$h1h2c[abs(df.full.cite$f0z[i]) > 3] = NA
+
+
+
+
+# if formant is outlier, exclude h1h2
+df.full.cite$h1h2c[df.full.cite$formant_outlier == "outlier"] = NA
+
+# calculate h1h2 and hnr z score
+df.full.cite = df.full.cite %>% group_by(subject) %>%
+  mutate(h1h2cz = (h1h2c - mean(h1h2c, na.rm = T))/sd(h1h2c, na.rm = T),
+         hnrz = (hnr - mean(hnr, na.rm = T))/sd(hnr, na.rm = T)) %>%
+  ungroup()
+
+# if h1h2 z score larger than 3, exclude h1h2 and h1h2 z score
+df.full.cite$h1h2c[df.full.cite$h1h2cz[i] > 3] = NA
+df.full.cite$h1h2cz[df.full.cite$h1h2cz[i] > 3] = NA
+
+# if hnr z score larger than 3, exclude hnr and hnr z score
+df.full.cite$hnr[df.full.cite$hnrz[i] > 3] = NA
+df.full.cite$hnrz[df.full.cite$hnrz[i] > 3] = NA
+
+
+# calculate duration z score. Note not to include repetitive duration data
+
+df.full.cite.unique = df.full.cite %>% dplyr::select(subject, filen, duration) %>% unique() %>%
+  group_by(subject) %>%
+  dplyr::mutate(durationmean = mean(duration, na.rm = T),
+                durationsd = sd(duration, na.rm = T),
+                durationz = (duration-durationmean)/durationsd) %>%
+  ungroup()
+df.full.cite = left_join(df.full.cite, df.full.cite.unique, by = c("subject","filen","duration"))
+
+
+
+# convert all values to numeric value
+df.full.cite <- df.full.cite %>%
+  mutate(f0z = as.numeric(f0z), 
+         h1h2cz = as.numeric(h1h2cz),
+         hnrz = as.numeric(hnrz),
+         t_ms = as.numeric(t_ms),
+         h1h2c = as.numeric(h1h2c),
+         durationz = as.numeric(durationz),
+         f0 = as.numeric(f0),
+         hnr = as.numeric(hnr))
+
+
+# check the number of NaN from the VS output; and the number of na due to outlier exclusion
+nrow(df.full.cite %>% filter(f0 == "NaN"))
+nrow(df.full.cite %>% filter(h1h2c == "NaN"))
+nrow(df.full.cite %>% filter(hnr == "NaN"))
+nrow(df.full.cite %>% filter(is.na(f0z)))
+nrow(df.full.cite %>% filter(is.na(h1h2cz)))
+nrow(df.full.cite %>% filter(is.na(hnrz)))
+
+
+
+df0 = df.full.cite %>% filter(!is.na(f0z))
+dh1h2 = df.full.cite %>% filter(!is.na(h1h2cz))
+dhnr = df.full.cite %>% filter(!is.na(hnrz))
+
+# check how many unique words there are for f0, h1h2, and hnr
+length(unique(df0$file_sub))
+length(unique(dh1h2$file_sub))
+length(unique(dhnr$file_sub))
+
+
+
+
+
+```
+
+
+
+## /u/ outlier
+
+```{r}
+
+View(dfsub.mean.cite.midformant.forplot %>%
+filter(vowel == "u" & check == "unchecked" & midf2 > 1500))
+
+#checked
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df1" & filen == "155" & vowel == "u"] = 344.373
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df1" & filen == "155" & vowel == "u"] = 758.075
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "34" & vowel == "u"] = 354.370
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "34" & vowel == "u"] = 671.630
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "7" & vowel == "u"] = 357.001
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "7" & vowel == "u"] = 672.870
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df4" & filen == "34" & vowel == "u"] = 413.120
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df4" & filen == "34" & vowel == "u"] = 827.156	
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df4" & filen == "69" & vowel == "u"] = 314.808
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df4" & filen == "69" & vowel == "u"] = 937.309
+
+# unchecked
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df1" & filen == "177" & vowel == "u"] = 413.396
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df1" & filen == "177" & vowel == "u"] = 702.407
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df1" & filen == "61" & vowel == "u"] = 333.362
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df1" & filen == "61" & vowel == "u"] = 789.168
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df10" & filen == "112" & vowel == "u"] = 400.244
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df10" & filen == "112" & vowel == "u"] = 640.691
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df10" & filen == "114" & vowel == "u"] = 393.152
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df10" & filen == "114" & vowel == "u"] = 671.854
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df10" & filen == "177" & vowel == "u"] = 411.000
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df10" & filen == "177" & vowel == "u"] = 625.792
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df10" & filen == "30" & vowel == "u"] = 389.626
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df10" & filen == "30" & vowel == "u"] = 609.889
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df10" & filen == "40" & vowel == "u"] = 364.972
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df10" & filen == "40" & vowel == "u"] = 617.132
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "110" & vowel == "u"] = 334.961
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "110" & vowel == "u"] = 662.305
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "30" & vowel == "u"] = 336.052
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "30" & vowel == "u"] = 560.127
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "40" & vowel == "u"] = 353.710
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "40" & vowel == "u"] = 604.304
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "4" & vowel == "u"] = 309.531
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "4" & vowel == "u"] = 589.378
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "6" & vowel == "u"] = 330.370
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df2" & filen == "6" & vowel == "u"] = 598.174 
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df3" & filen == "177" & vowel == "u"] = 311.732
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df3" & filen == "177" & vowel == "u"] = 695.975 
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df4" & filen == "112" & vowel == "u"] = 278.136
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df4" & filen == "112" & vowel == "u"] = 665.158 
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df4" & filen == "30" & vowel == "u"] = 287.596
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df4" & filen == "30" & vowel == "u"] = 641.504 
+
+dfsub.mean.cite.midformant.forplot$midf1[dfsub.mean.cite.midformant.forplot$subject == "df4" & filen == "40" & vowel == "u"] = 274.041
+dfsub.mean.cite.midformant.forplot$midf2[dfsub.mean.cite.midformant.forplot$subject == "df4" & filen == "40" & vowel == "u"] = 634.460 
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+### Prepare sandhi data
+
+```{r}
+
+path = "F:/backup_07032021/Work/fieldwork_xiapu_summer2019/experiment/10_person_experiment/annotation/neutralization/word-tier/txt"
+setwd(path)
+
+df1 = read_csv("01_F.csv")
+df2 = read_csv("02_M.csv")
+df3 = read_csv("03_F.csv")
+df4 = read_csv("04_M.csv")
+df5 = read_csv("05_F.csv")
+df6 = read_csv("06_M.csv")
+df8 = read_csv("08_M.csv")
+df9 = read_csv("09_F.csv")
+df10 = read_csv("10_M.csv")
+df11 = read_csv("11_F.csv")
+
+
+dfset = c("df1","df2", "df3","df4","df5","df6","df8","df9","df10","df11")
+df_meta = read_csv("E:/fieldwork_xiapu_summer2019/experiment/10_person_experiment/result/data-new/sandhi_metadata_languages_110821.csv")
+
+```
+
+
+## no use
+```{r eval = FALSE}
+# for copy files with /u/ vowel
+
+df_meta_u = df_meta %>% filter(vowel == "u")
+ablist = c("A.wav","B.wav", "A.TextGrid","B.TextGrid")
+namelist.complete = c(outer(df_meta_u$filen, ablist, FUN=paste0))
+df_vowelu = data.frame(filename = namelist.complete)
+write_csv(df_vowelu, "F:/backup_07032021/Work/fieldwork_xiapu_summer2019/experiment/10_person_experiment/annotation/neutralization/word-tier/vowel_u_sandhi_filename.txt")
+
+```
+
+
+```{r}
+
+df.sandhi = NULL
+for (i in dfset) {
+  j = get(i)
+  j = j %>%
+    mutate(subject = i)
+  df.sandhi = rbind(df.sandhi, j)
+  
+}
+
+
+df.sandhi = df.sandhi %>%
+  mutate(duration = seg_End - seg_Start) %>%
+  filter(!str_detect(Filename, "clip|corrupt|Clip"))
+df.sandhi$filen = str_sub(df.sandhi$Filename,1,-6)
+
+
+df.sandhi = df.sandhi %>%
+  mutate(filen = as.numeric(filen)) %>%
+  filter(filen %in% df_meta$filen) %>%
+  mutate(filen = as.numeric(filen)) %>%
+  mutate(file_sub = paste(subject, Filename,sep = "-"))
+
+length(unique(df.sandhi$file_sub))  
+df.sandhi.meta = left_join(df.sandhi, df_meta%>%dplyr::select(filen,vowel), by = "filen")
+
+# length(unique(df.sandhi$filen))
+
+
+df.full.sandhi = df.sandhi.meta %>%
+  dplyr::select(Filename,segment,tone,environment,sandhi,rep,seg_Start,seg_End,t_ms,file_sub,
+                H1H2c,Energy,HNR05,strF0,pF1, pF2, soe,subject,duration,filen,vowel)%>%
+  dplyr::rename(h1h2c=H1H2c,hnr=HNR05,f0=strF0,energy=Energy,f1=pF1,f2=pF2) %>%
+  mutate(logf0 = log10(f0))
+
+
+nrow(df.full.sandhi %>% filter(f0 == "NaN"))
+nrow(df.full.sandhi %>% filter(h1h2c == "NaN"))
+nrow(df.full.sandhi %>% filter(hnr == "NaN"))
+
+# filter out tokens where energy = 0 and log transform energy
+nrow(df.full.sandhi %>% filter(energy == 0))
+  
+df.full.sandhi$f0[df.full.sandhi$energy == 0] <- NA
+df.full.sandhi$logf0[df.full.sandhi$energy == 0] <- NA
+df.full.sandhi$h1h2c[df.full.sandhi$energy == 0] <- NA
+df.full.sandhi$hnr[df.full.sandhi$energy == 0] <- NA
+  
+df.full.sandhi = df.full.sandhi %>%
+  mutate(f0 = as.numeric(f0),
+         h1h2c = as.numeric(h1h2c),
+         hnr = as.numeric(hnr))
+
+```
+
+
+
+
+### Draw f0 track for 2 and 5 to spot tracking error
+```{r}
+
+
+length(levels(as.factor(df.full.sandhi$file_sub)))
+
+
+subjectset = levels(as.factor(df.full.sandhi$subject))
+
+for (i in subjectset) {
+  f0_track = df.full.sandhi %>%
+  filter(tone %in% c(2,5) & subject == i) %>%
+  ggplot(aes(x = t_ms, y = f0)) +
+  geom_line() +
+  facet_wrap(.~Filename)+
+    xlab(i)
+  print(f0_track)
+}
+```
+
+
+### Exclude f0 track error
+```{r}
+
+df.full.sandhi = df.full.sandhi %>%
+  mutate(f0_trackerror = ifelse(subject == "df5" & Filename == "29A.mat", "error", NA))
+
+```
+
+
+
+### havling/doubling check
+
+```{r}
+
+file = unique(df.full.sandhi$file_sub)
+
+df.outlier = data.frame(filename=NA, f0=NA, time=NA, problem=NA)
+
+
+for (i in file) {
+  file.check = df.full.sandhi %>%
+    filter(file_sub == i)
+  for (j in 1:nrow(file.check)){
+    if (j < nrow(file.check)){
+      currentf0 = file.check$f0[j]
+      nextf0 = file.check$f0[j+1]
+      if (is.na(currentf0) || is.na(nextf0)){
+        print("na detected")
+      } else {
+        if (nextf0 <= 0.5 * currentf0) {
+          df.outlier[nrow(df.outlier)+1,] = c(file.check$file_sub[j], file.check$f0[j], file.check$t_ms[j], "halving")
+        print("halving")
+        } else if (nextf0 >= 2 * currentf0) {
+          df.outlier[nrow(df.outlier)+1,] = c(file.check$file_sub[j], file.check$f0[j], file.check$t_ms[j], "doubling")
+        print("doubling")
+        } 
+      }
+    }
+  } 
+}  
+```
+
+
+
+# Make three point data file for detecting formant outlier
+
+
+```{r}
+
+subjectset = levels(as.factor(df.full.sandhi$subject))
+
+dfsub.mean.3p = NULL
+
+for (j in subjectset) {
+  dfsub = df.full.sandhi %>%
+    filter(subject == j)
+  nameset = unique(droplevels(dfsub)$Filename)
+  for (i in nameset) {
+    df.mean = dfsub %>%
+      filter(Filename == i)
+    interval = round(quantile(c(1:nrow(df.mean)),c(1/3, 2/3, 1)),0)
+    
+
+    f1.mean1 = mean(df.mean$f1[1:interval[1]], na.rm = T)
+    f1.mean2 = mean(df.mean$f1[(interval[1]+1):interval[2]], na.rm = T)
+    f1.mean3 = mean(df.mean$f1[(interval[2]+1):interval[3]], na.rm = T)
+    
+    f2.mean1 = mean(df.mean$f2[1:interval[1]], na.rm = T)
+    f2.mean2 = mean(df.mean$f2[(interval[1]+1):interval[2]], na.rm = T)
+    f2.mean3 = mean(df.mean$f2[(interval[2]+1):interval[3]], na.rm = T)
+    
+   
+    
+    df.mean.sub = data.frame(
+                             f1 = c(f1.mean1, f1.mean2, f1.mean3),
+                             f2 = c(f2.mean1, f2.mean2, f2.mean3),
+                             subject = j, 
+                             filen = df.mean$filen[1],
+                             filename = df.mean$Filename[1],
+                             vowel = df.mean$vowel[1],
+                             tone = df.mean$tone[1],
+                             time = c(1:3),
+                             type = "sandhi")
+    dfsub.mean.3p = rbind(dfsub.mean.3p, df.mean.sub)
+  }
+}
+
+```
+
+## find out datapoint where there is formant outlier
+
+```{r}
+
+vmahalanobis = function (dat) {
+  if (nrow(dat) < 25) {
+    dat$zF1F2 = NA
+    return(dat)
+  }
+  means = c(mean(dat$f1), mean(dat$f2))
+  cov = cov(cbind(dat$f1, dat$f2))
+  
+  dat$zF1F2 = mahalanobis(cbind(dat$f1, dat$f2),
+                          center=means, cov=cov)
+  dat
+}
+
+distance_cutoff = 6
+
+dfsub.mean.3p.formantcheck = dfsub.mean.3p %>%
+  filter(time == 2) %>%
+  group_by(vowel) %>%
+  do(vmahalanobis(.)) %>%
+  ungroup() %>%
+  mutate(formant_outlier = NA)
+
+# visualize the vowel formant
+dfsub.mean.3p.formantcheck %>% 
+  filter(is.na(formant_outlier)) %>%
+  ggplot(aes(x = f2, y = f1, color = zF1F2 > distance_cutoff)) +
+  geom_point(size = 0.6) +
+  #geom_text()+
+  facet_wrap(.~vowel)+
+  #geom_density_2d() +
+#  scale_color_manual(values=c('#a6611a','#dfc27d','#018571'))+
+  scale_y_reverse(limits = c(1500,0),position = "right") + 
+  scale_x_reverse(limits = c(3500,0),position = "top")+
+  theme_bw()
+  
+
+for (i in 1:nrow(dfsub.mean.3p.formantcheck)) {
+  if (dfsub.mean.3p.formantcheck$vowel[i] == "u" && dfsub.mean.3p.formantcheck$f2[i] > 1500) {
+    dfsub.mean.3p.formantcheck$formant_outlier[i] = "outlier"
+  } else if (!is.na(dfsub.mean.3p.formantcheck$zF1F2[i])) {
+        if (dfsub.mean.3p.formantcheck$zF1F2[i] > distance_cutoff){
+              dfsub.mean.3p.formantcheck$formant_outlier[i] = "outlier"
+        }
+  }
+}
+
+# visual inspection: df2, 57 outlier
+
+df.full.sandhi = left_join(df.full.sandhi, dfsub.mean.3p.formantcheck %>% dplyr::select(subject, filen, vowel, zF1F2, formant_outlier), by = c("subject","filen","vowel"))
+
+```
+
+### Visual inspection for /u/
+
+```{r eval = F}
+View(dfsub.mean.3p.formantcheck %>% filter(vowel == "u" & f2 > 1500))
+```
+
+
+
+### Detect f0, h1h2 and hnr outlier
+
+```{r echo = FALSE, results = "hide", message = FALSE}
+
+# if f0 has track error, exclude f0 and h1h2
+
+df.full.sandhi$f0[df.full.sandhi$f0_trackerror == "error"] = NA
+df.full.sandhi$logf0[df.full.sandhi$f0_trackerror == "error"] = NA
+df.full.sandhi$h1h2c[df.full.sandhi$f0_trackerror == "error"] = NA
+
+
+# calculate f0 z score
+df.full.sandhi = df.full.sandhi %>% group_by(subject) %>%
+  mutate(f0z = logf0 - mean(logf0, na.rm = T)/sd(logf0, na.rm = T)) %>%
+  ungroup()
+
+# if f0 z score larger than 3, exclude f0 and f0 z score, and h1h2
+df.full.sandhi$f0z[df.full.sandhi$f0z[i] > 3] = NA
+df.full.sandhi$f0[df.full.sandhi$f0z[i] > 3] = NA
+df.full.sandhi$logf0[df.full.sandhi$f0z[i] > 3] = NA
+df.full.sandhi$h1h2c[df.full.sandhi$f0z[i] > 3] = NA
+
+# if formant is outlier, exclude h1h2
+df.full.sandhi$h1h2c[df.full.sandhi$formant_outlier == "outlier"] = NA
+
+# calculate h1h2 and hnr z score
+df.full.sandhi = df.full.sandhi %>% group_by(subject) %>%
+  mutate(h1h2cz = (h1h2c - mean(h1h2c, na.rm = T))/sd(h1h2c, na.rm = T),
+         hnrz = (hnr - mean(hnr, na.rm = T))/sd(hnr, na.rm = T)) %>%
+  ungroup()
+
+# if h1h2 z score larger than 3, exclude h1h2 and h1h2 z score
+df.full.sandhi$h1h2c[df.full.sandhi$h1h2cz[i] > 3] = NA
+df.full.sandhi$h1h2cz[df.full.sandhi$h1h2cz[i] > 3] = NA
+
+# if hnr z score larger than 3, exclude hnr and hnr z score
+df.full.sandhi$hnr[df.full.sandhi$hnrz[i] > 3] = NA
+df.full.sandhi$hnrz[df.full.sandhi$hnrz[i] > 3] = NA
+
+
+# calculate duration z score. Note not to include repetitive duration data
+
+df.full.sandhi.unique = df.full.sandhi %>% dplyr::select(subject, filen, duration) %>% unique() %>%
+  group_by(subject) %>%
+  dplyr::mutate(durationmean = mean(duration, na.rm = T),
+                durationsd = sd(duration, na.rm = T),
+                durationz = (duration-durationmean)/durationsd) %>%
+  ungroup()
+df.full.sandhi = left_join(df.full.sandhi, df.full.sandhi.unique, by = c("subject","filen","duration"))
+
+
+
+# convert all values to numeric value
+df.full.sandhi <- df.full.sandhi %>%
+  mutate(f0z = as.numeric(f0z), 
+         h1h2cz = as.numeric(h1h2cz),
+         hnrz = as.numeric(hnrz),
+         t_ms = as.numeric(t_ms),
+         h1h2c = as.numeric(h1h2c),
+         durationz = as.numeric(durationz),
+         f0 = as.numeric(f0),
+         hnr = as.numeric(hnr))
+
+
+# check the number of NaN from the VS output; and the number of na due to outlier exclusion
+nrow(df.full.sandhi %>% filter(f0 == "NaN"))
+nrow(df.full.sandhi %>% filter(h1h2c == "NaN"))
+nrow(df.full.sandhi %>% filter(hnr == "NaN"))
+nrow(df.full.sandhi %>% filter(is.na(f0z)))
+nrow(df.full.sandhi %>% filter(is.na(h1h2cz)))
+nrow(df.full.sandhi %>% filter(is.na(hnrz)))
+
+
+
+df0 = df.full.sandhi %>% filter(!is.na(f0z))
+dh1h2 = df.full.sandhi %>% filter(!is.na(h1h2cz))
+dhnr = df.full.sandhi %>% filter(!is.na(hnrz))
+
+# check how many unique words there are for f0, h1h2, and hnr
+length(unique(df0$file_sub))
+length(unique(dh1h2$file_sub))
+length(unique(dhnr$file_sub))
+
+
+
+
+
+```
+
+
+
+### Make 9-point version
+
+```{r}
+
+df.full.cite = df.full.cite %>%
+                  mutate(type = "cite")
+df.full.sandhi = df.full.sandhi %>%
+                  mutate(type = "sandhi")
+df.full = rbind(df.full.cite, df.full.sandhi) %>%
+            mutate(fileunique = paste(Filename, type, sep = "-"))
+            
+            
+subjectset = levels(as.factor(df.full$subject))
+
+df.9p = NULL
+
+for (j in subjectset) {
+  dfsub = df.full %>%
+    filter(subject == j)
+  nameset = unique(droplevels(dfsub)$fileunique)
+  for (i in nameset) {
+    df.mean = dfsub %>%
+      filter(fileunique == i)
+    interval = round(quantile(c(1:nrow(df.mean)),c(1/9, 2/9, 3/9, 4/9, 5/9, 6/9, 7/9, 8/9, 1)),0)
+    
+    f0.mean1 = mean(df.mean$f0[1:interval[1]], na.rm = T)
+    f0.mean2 = mean(df.mean$f0[(interval[1]+1):interval[2]], na.rm = T)
+    f0.mean3 = mean(df.mean$f0[(interval[2]+1):interval[3]], na.rm = T)
+    f0.mean4 = mean(df.mean$f0[(interval[3]+1):interval[4]], na.rm = T)
+    f0.mean5 = mean(df.mean$f0[(interval[4]+1):interval[5]], na.rm = T)
+    f0.mean6 = mean(df.mean$f0[(interval[5]+1):interval[6]], na.rm = T)
+    f0.mean7 = mean(df.mean$f0[(interval[6]+1):interval[7]], na.rm = T)
+    f0.mean8 = mean(df.mean$f0[(interval[7]+1):interval[8]], na.rm = T)
+    f0.mean9 = mean(df.mean$f0[(interval[8]+1):interval[9]], na.rm = T)
+
+    logf0.mean1 = mean(df.mean$logf0[1:interval[1]], na.rm = T)
+    logf0.mean2 = mean(df.mean$logf0[(interval[1]+1):interval[2]], na.rm = T)
+    logf0.mean3 = mean(df.mean$logf0[(interval[2]+1):interval[3]], na.rm = T)
+    logf0.mean4 = mean(df.mean$logf0[(interval[3]+1):interval[4]], na.rm = T)
+    logf0.mean5 = mean(df.mean$logf0[(interval[4]+1):interval[5]], na.rm = T)
+    logf0.mean6 = mean(df.mean$logf0[(interval[5]+1):interval[6]], na.rm = T)
+    logf0.mean7 = mean(df.mean$logf0[(interval[6]+1):interval[7]], na.rm = T)
+    logf0.mean8 = mean(df.mean$logf0[(interval[7]+1):interval[8]], na.rm = T)
+    logf0.mean9 = mean(df.mean$logf0[(interval[8]+1):interval[9]], na.rm = T)
+    
+    h1h2.mean1 = mean(df.mean$h1h2c[1:interval[1]], na.rm = T)
+    h1h2.mean2 = mean(df.mean$h1h2c[(interval[1]+1):interval[2]], na.rm = T)
+    h1h2.mean3 = mean(df.mean$h1h2c[(interval[2]+1):interval[3]], na.rm = T)
+    h1h2.mean4 = mean(df.mean$h1h2c[(interval[3]+1):interval[4]], na.rm = T)
+    h1h2.mean5 = mean(df.mean$h1h2c[(interval[4]+1):interval[5]], na.rm = T)
+    h1h2.mean6 = mean(df.mean$h1h2c[(interval[5]+1):interval[6]], na.rm = T)
+    h1h2.mean7 = mean(df.mean$h1h2c[(interval[6]+1):interval[7]], na.rm = T)
+    h1h2.mean8 = mean(df.mean$h1h2c[(interval[7]+1):interval[8]], na.rm = T)
+    h1h2.mean9 = mean(df.mean$h1h2c[(interval[8]+1):interval[9]], na.rm = T)
+    
+    hnr.mean1 = mean(df.mean$hnr[1:interval[1]], na.rm = T)
+    hnr.mean2 = mean(df.mean$hnr[(interval[1]+1):interval[2]], na.rm = T)
+    hnr.mean3 = mean(df.mean$hnr[(interval[2]+1):interval[3]], na.rm = T)
+    hnr.mean4 = mean(df.mean$hnr[(interval[3]+1):interval[4]], na.rm = T)
+    hnr.mean5 = mean(df.mean$hnr[(interval[4]+1):interval[5]], na.rm = T)
+    hnr.mean6 = mean(df.mean$hnr[(interval[5]+1):interval[6]], na.rm = T)
+    hnr.mean7 = mean(df.mean$hnr[(interval[6]+1):interval[7]], na.rm = T)
+    hnr.mean8 = mean(df.mean$hnr[(interval[7]+1):interval[8]], na.rm = T)
+    hnr.mean9 = mean(df.mean$hnr[(interval[8]+1):interval[9]], na.rm = T)
+    
+    
+    energy.mean1 = mean(df.mean$energy[1:interval[1]], na.rm = T)
+    energy.mean2 = mean(df.mean$energy[(interval[1]+1):interval[2]], na.rm = T)
+    energy.mean3 = mean(df.mean$energy[(interval[2]+1):interval[3]], na.rm = T)
+    energy.mean4 = mean(df.mean$energy[(interval[3]+1):interval[4]], na.rm = T)
+    energy.mean5 = mean(df.mean$energy[(interval[4]+1):interval[5]], na.rm = T)
+    energy.mean6 = mean(df.mean$energy[(interval[5]+1):interval[6]], na.rm = T)
+    energy.mean7 = mean(df.mean$energy[(interval[6]+1):interval[7]], na.rm = T)
+    energy.mean8 = mean(df.mean$energy[(interval[7]+1):interval[8]], na.rm = T)
+    energy.mean9 = mean(df.mean$energy[(interval[8]+1):interval[9]], na.rm = T)
+    
+    f0.mean.z1 = mean(df.mean$f0z[1:interval[1]], na.rm = T)
+    f0.mean.z2 = mean(df.mean$f0z[(interval[1]+1):interval[2]], na.rm = T)
+    f0.mean.z3 = mean(df.mean$f0z[(interval[2]+1):interval[3]], na.rm = T)
+    f0.mean.z4 = mean(df.mean$f0z[(interval[3]+1):interval[4]], na.rm = T)
+    f0.mean.z5 = mean(df.mean$f0z[(interval[4]+1):interval[5]], na.rm = T)
+    f0.mean.z6 = mean(df.mean$f0z[(interval[5]+1):interval[6]], na.rm = T)
+    f0.mean.z7 = mean(df.mean$f0z[(interval[6]+1):interval[7]], na.rm = T)
+    f0.mean.z8 = mean(df.mean$f0z[(interval[7]+1):interval[8]], na.rm = T)
+    f0.mean.z9 = mean(df.mean$f0z[(interval[8]+1):interval[9]], na.rm = T)
+    
+    h1h2.mean.z1 = mean(df.mean$h1h2cz[1:interval[1]], na.rm = T)
+    h1h2.mean.z2 = mean(df.mean$h1h2cz[(interval[1]+1):interval[2]], na.rm = T)
+    h1h2.mean.z3 = mean(df.mean$h1h2cz[(interval[2]+1):interval[3]], na.rm = T)
+    h1h2.mean.z4 = mean(df.mean$h1h2cz[(interval[3]+1):interval[4]], na.rm = T)
+    h1h2.mean.z5 = mean(df.mean$h1h2cz[(interval[4]+1):interval[5]], na.rm = T)
+    h1h2.mean.z6 = mean(df.mean$h1h2cz[(interval[5]+1):interval[6]], na.rm = T)
+    h1h2.mean.z7 = mean(df.mean$h1h2cz[(interval[6]+1):interval[7]], na.rm = T)
+    h1h2.mean.z8 = mean(df.mean$h1h2cz[(interval[7]+1):interval[8]], na.rm = T)
+    h1h2.mean.z9 = mean(df.mean$h1h2cz[(interval[8]+1):interval[9]], na.rm = T)
+    
+    
+    hnr.mean.z1 = mean(df.mean$hnrz[1:interval[1]], na.rm = T)
+    hnr.mean.z2 = mean(df.mean$hnrz[(interval[1]+1):interval[2]], na.rm = T)
+    hnr.mean.z3 = mean(df.mean$hnrz[(interval[2]+1):interval[3]], na.rm = T)
+    hnr.mean.z4 = mean(df.mean$hnrz[(interval[3]+1):interval[4]], na.rm = T)
+    hnr.mean.z5 = mean(df.mean$hnrz[(interval[4]+1):interval[5]], na.rm = T)
+    hnr.mean.z6 = mean(df.mean$hnrz[(interval[5]+1):interval[6]], na.rm = T)
+    hnr.mean.z7 = mean(df.mean$hnrz[(interval[6]+1):interval[7]], na.rm = T)
+    hnr.mean.z8 = mean(df.mean$hnrz[(interval[7]+1):interval[8]], na.rm = T)
+    hnr.mean.z9 = mean(df.mean$hnrz[(interval[8]+1):interval[9]], na.rm = T)
+    
+    
+    
+    
+    df.mean.sub = data.frame(f0z = c(f0.mean.z1, f0.mean.z2, f0.mean.z3, 
+                                     f0.mean.z4, f0.mean.z5,f0.mean.z6,
+                                     f0.mean.z7, f0.mean.z8, f0.mean.z9),
+                             
+                             hnr = c(h1h2.mean1, h1h2.mean2, h1h2.mean3,
+                                     h1h2.mean4, h1h2.mean5, h1h2.mean6,
+                                     h1h2.mean7, h1h2.mean8, h1h2.mean9),
+                             hnrz = c(hnr.mean.z1, hnr.mean.z2, hnr.mean.z3,
+                                      hnr.mean.z4, hnr.mean.z5, hnr.mean.z6,
+                                      hnr.mean.z7, hnr.mean.z8, hnr.mean.z9),
+                             f0 = c(f0.mean1, f0.mean2, f0.mean3,
+                                    f0.mean4, f0.mean5, f0.mean6,
+                                    f0.mean7, f0.mean8, f0.mean9),
+                             logf0 = c(logf0.mean1, logf0.mean2, logf0.mean3,
+                                    logf0.mean4, logf0.mean5, logf0.mean6,
+                                    logf0.mean7, logf0.mean8, logf0.mean9),
+                             h1h2c = c(h1h2.mean1, h1h2.mean2, h1h2.mean3,
+                                       h1h2.mean4, h1h2.mean5, h1h2.mean6,
+                                       h1h2.mean7, h1h2.mean8, h1h2.mean9),
+                             h1h2cz = c(h1h2.mean.z1, h1h2.mean.z2, h1h2.mean.z3,
+                                        h1h2.mean.z4, h1h2.mean.z5, h1h2.mean.z6,
+                                        h1h2.mean.z7, h1h2.mean.z8, h1h2.mean.z9),
+                             durationz = df.mean$durationz[1],
+                             duration = df.mean$duration[1],
+                             subject = j, 
+                             filen = str_sub(df.mean$filen[1]),
+                             filename = df.mean$Filename[1],
+                             tone = df.mean$tone[1],
+                             time = c(1:9),
+                             type = df.mean$type[1],
+                             fileunique = i,
+                             formant_outlier = df.mean$formant_outlier[1],
+                             f0_trackerror = df.mean$f0_trackerror[1])
+    df.9p = rbind(df.9p, df.mean.sub)
+  }
+}
+
+```
+
+
+
+
+### Make 3-point version
+
+```{r}
+            
+
+df.full.cite = df.full.cite %>%
+                  mutate(type = "cite")
+df.full.sandhi = df.full.sandhi %>%
+                  mutate(type = "sandhi")
+df.full = rbind(df.full.cite, df.full.sandhi) %>%
+            mutate(fileunique = paste(Filename, type, sep = "-"))
+            
+            
+subjectset = levels(as.factor(df.full$subject))
+
+df.3p = NULL
+
+for (j in subjectset) {
+  dfsub = df.full %>%
+    filter(subject == j)
+  nameset = unique(droplevels(dfsub)$fileunique)
+  for (i in nameset) {
+    df.mean = dfsub %>%
+      filter(fileunique == i)
+    interval = round(quantile(c(1:nrow(df.mean)),c(1/3, 2/3, 1)),0)
+    
+    f0.mean1 = mean(df.mean$f0[1:interval[1]], na.rm = T)
+    f0.mean2 = mean(df.mean$f0[(interval[1]+1):interval[2]], na.rm = T)
+    f0.mean3 = mean(df.mean$f0[(interval[2]+1):interval[3]], na.rm = T)
+
+    logf0.mean1 = mean(df.mean$logf0[1:interval[1]], na.rm = T)
+    logf0.mean2 = mean(df.mean$logf0[(interval[1]+1):interval[2]], na.rm = T)
+    logf0.mean3 = mean(df.mean$logf0[(interval[2]+1):interval[3]], na.rm = T)
+
+        
+    h1h2.mean1 = mean(df.mean$h1h2c[1:interval[1]], na.rm = T)
+    h1h2.mean2 = mean(df.mean$h1h2c[(interval[1]+1):interval[2]], na.rm = T)
+    h1h2.mean3 = mean(df.mean$h1h2c[(interval[2]+1):interval[3]], na.rm = T)
+    
+    hnr.mean1 = mean(df.mean$hnr[1:interval[1]], na.rm = T)
+    hnr.mean2 = mean(df.mean$hnr[(interval[1]+1):interval[2]], na.rm = T)
+    hnr.mean3 = mean(df.mean$hnr[(interval[2]+1):interval[3]], na.rm = T)
+    
+    
+    energy.mean1 = mean(df.mean$energy[1:interval[1]], na.rm = T)
+    energy.mean2 = mean(df.mean$energy[(interval[1]+1):interval[2]], na.rm = T)
+    energy.mean3 = mean(df.mean$energy[(interval[2]+1):interval[3]], na.rm = T)
+    
+    f0.mean.z1 = mean(df.mean$f0z[1:interval[1]], na.rm = T)
+    f0.mean.z2 = mean(df.mean$f0z[(interval[1]+1):interval[2]], na.rm = T)
+    f0.mean.z3 = mean(df.mean$f0z[(interval[2]+1):interval[3]], na.rm = T)
+    
+    h1h2.mean.z1 = mean(df.mean$h1h2cz[1:interval[1]], na.rm = T)
+    h1h2.mean.z2 = mean(df.mean$h1h2cz[(interval[1]+1):interval[2]], na.rm = T)
+    h1h2.mean.z3 = mean(df.mean$h1h2cz[(interval[2]+1):interval[3]], na.rm = T)
+    
+    
+    hnr.mean.z1 = mean(df.mean$hnrz[1:interval[1]], na.rm = T)
+    hnr.mean.z2 = mean(df.mean$hnrz[(interval[1]+1):interval[2]], na.rm = T)
+    hnr.mean.z3 = mean(df.mean$hnrz[(interval[2]+1):interval[3]], na.rm = T)
+    
+    
+    
+    
+    df.mean.sub = data.frame(f0z = c(f0.mean.z1, f0.mean.z2, f0.mean.z3),
+                             hnrz = c(hnr.mean.z1, hnr.mean.z2, hnr.mean.z3),
+                             f0 = c(f0.mean1, f0.mean2, f0.mean3),
+                             logf0 = c(logf0.mean1, logf0.mean2, logf0.mean3),
+                             h1h2cz = c(h1h2.mean.z1, h1h2.mean.z2, h1h2.mean.z3),
+                             durationz = df.mean$durationz[1],
+                             subject = j, 
+                             filen = str_sub(df.mean$filen[1]),
+                             filename = df.mean$Filename[1],
+                             tone = df.mean$tone[1],
+                             time = c(1:3),
+                             type = df.mean$type[1],
+                             fileunique = i,
+                             formant_outlier = df.mean$formant_outlier[1],
+                             f0_trackerror = df.mean$f0_trackerror[1])
+    df.3p = rbind(df.3p, df.mean.sub)
+  }
+}
+
+
+nrow(df.3p %>% filter(!is.na(f0z) & type == "sandhi"))
+nrow(df.3p %>% filter(!is.na(h1h2cz) & type == "sandhi"))
+nrow(df.3p %>% filter(!is.na(hnrz) & type == "sandhi"))
+
+
+
+
+# 3p wide version
+
+
+df.3p.wide = NULL
+
+for (j in subjectset) {
+  dfsub = df.full %>%
+    filter(subject == j)
+  nameset = unique(droplevels(dfsub)$fileunique)
+  for (i in nameset) {
+    df.mean = dfsub %>%
+      filter(fileunique == i)
+    interval = round(quantile(c(1:nrow(df.mean)),c(1/3, 2/3, 1)),0)
+    
+    f0.mean1 = mean(df.mean$f0[1:interval[1]], na.rm = T)
+    f0.mean2 = mean(df.mean$f0[(interval[1]+1):interval[2]], na.rm = T)
+    f0.mean3 = mean(df.mean$f0[(interval[2]+1):interval[3]], na.rm = T)
+    
+    logf0.mean1 = mean(df.mean$logf0[1:interval[1]], na.rm = T)
+    logf0.mean2 = mean(df.mean$logf0[(interval[1]+1):interval[2]], na.rm = T)
+    logf0.mean3 = mean(df.mean$logf0[(interval[2]+1):interval[3]], na.rm = T)
+    
+    h1h2.mean1 = mean(df.mean$h1h2c[1:interval[1]], na.rm = T)
+    h1h2.mean2 = mean(df.mean$h1h2c[(interval[1]+1):interval[2]], na.rm = T)
+    h1h2.mean3 = mean(df.mean$h1h2c[(interval[2]+1):interval[3]], na.rm = T)
+    
+    hnr.mean1 = mean(df.mean$hnr[1:interval[1]], na.rm = T)
+    hnr.mean2 = mean(df.mean$hnr[(interval[1]+1):interval[2]], na.rm = T)
+    hnr.mean3 = mean(df.mean$hnr[(interval[2]+1):interval[3]], na.rm = T)
+    
+    
+    energy.mean1 = mean(df.mean$energy[1:interval[1]], na.rm = T)
+    energy.mean2 = mean(df.mean$energy[(interval[1]+1):interval[2]], na.rm = T)
+    energy.mean3 = mean(df.mean$energy[(interval[2]+1):interval[3]], na.rm = T)
+    
+    f0.mean.z1 = mean(df.mean$f0z[1:interval[1]], na.rm = T)
+    f0.mean.z2 = mean(df.mean$f0z[(interval[1]+1):interval[2]], na.rm = T)
+    f0.mean.z3 = mean(df.mean$f0z[(interval[2]+1):interval[3]], na.rm = T)
+    
+    h1h2.mean.z1 = mean(df.mean$h1h2cz[1:interval[1]], na.rm = T)
+    h1h2.mean.z2 = mean(df.mean$h1h2cz[(interval[1]+1):interval[2]], na.rm = T)
+    h1h2.mean.z3 = mean(df.mean$h1h2cz[(interval[2]+1):interval[3]], na.rm = T)
+    
+    
+    hnr.mean.z1 = mean(df.mean$hnrz[1:interval[1]], na.rm = T)
+    hnr.mean.z2 = mean(df.mean$hnrz[(interval[1]+1):interval[2]], na.rm = T)
+    hnr.mean.z3 = mean(df.mean$hnrz[(interval[2]+1):interval[3]], na.rm = T)
+    
+    
+    df.mean.sub = data.frame(f0_001 = f0.mean1,
+                             f0_002 = f0.mean2,
+                             f0_003 = f0.mean3,
+                             logf0_001 = logf0.mean1,
+                             logf0_002 = logf0.mean2,
+                             logf0_003 = logf0.mean3,
+                             
+                             f0z_001 = f0.mean.z1,
+                             f0z_002 = f0.mean.z2,
+                             f0z_003 = f0.mean.z3,
+                             h1h2z_001 = h1h2.mean.z1,
+                             h1h2z_002 = h1h2.mean.z2,
+                             h1h2z_003 = h1h2.mean.z3,
+                             hnrz_001 = hnr.mean.z1,
+                             hnrz_002 = hnr.mean.z2,
+                             hnrz_003 = hnr.mean.z3,
+                             durationz = df.mean$durationz[1],
+                             subject = j, 
+                             filen = str_sub(df.mean$filen[1]),
+                             type = df.mean$type[1],
+                             tone = df.mean$tone[1],
+                             fileunique = i,
+                             formant_outlier = df.mean$formant_outlier[1],
+                             f0_trackerror = df.mean$f0_trackerror[1])                         
+                             
+    df.3p.wide = rbind(df.3p.wide, df.mean.sub)
+  }
+}
+
+
+
+#View(df.3p.wide %>%
+#filter(type == "sandhi") %>%
+#group_by(tone)%>%
+#summarise(n=n()))
+
+
+```
+
+
+### Experiment I figures
+
+
+### Figures
+
+```{r}
+dfsub.mean.cite = df.9p %>% filter(type == "cite")
+subjectset = levels(as.factor(dfsub.mean.cite$subject))
+
+df.sub.mean.cite.semi = NULL
+
+for (j in subjectset) {
+    dfsubject = dfsub.mean.cite %>%
+    filter(subject == j)
+  dfsubject$f0.semi=f2st(dfsubject$f0,base=mean(dfsubject$f0[dfsubject$tone == 11],na.rm=T))
+  df.sub.mean.cite.semi = rbind(df.sub.mean.cite.semi,dfsubject)
+
+}
+
+```
+
+
+### F0
+
+```{r}
+
+dfsub.mean.cite$tone.value = paste("T",dfsub.mean.cite$tone,sep = "")
+
+dfsub.mean.cite = dfsub.mean.cite %>%
+  mutate(tone.value= as.factor(tone.value))
+
+
+
+dfsub.mean.cite$tone.value = factor(dfsub.mean.cite$tone.value, levels = c("T44", "T23", "T42", "T35", "T11", "T5", "T2"))
+
+df.sub.mean.cite.semi$tone.value = paste("T",df.sub.mean.cite.semi$tone,sep = "")
+
+df.sub.mean.cite.semi = df.sub.mean.cite.semi %>%
+  mutate(tone.value= as.factor(tone.value))
+
+
+
+df.sub.mean.cite.semi$tone.value = factor(df.sub.mean.cite.semi$tone.value, levels = c("T44", "T23", "T42", "T35", "T11", "T5", "T2"))
+
+check_smooth_f0.st = df.sub.mean.cite.semi %>%
+  ggplot(aes(x = time, y = f0.semi, color = tone.value, linetype = tone.value)) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.1) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#66c2a5','#8da0cb','#5e3c99','#b2df8a','#fc8d62'))+
+  scale_linetype_manual(values=c(1,1,1,1,1,2,2)) +  
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("Mean F0 (st)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 5, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))+
+  theme(text=element_text(family="Palatino Linotype"))
+
+
+ggsave(check_smooth_f0, file = "D:/Research/languages/graph/F0_st_cite.tiff", width=5, height=3, units = 'in', bg = "transparent")
+
+
+check_smooth_f0 = dfsub.mean.cite %>%
+  ggplot(aes(x = time, y = f0z, color = tone.value, linetype = tone.value)) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.1) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#66c2a5','#8da0cb','#5e3c99','#b2df8a','#fc8d62'))+
+  scale_linetype_manual(values=c(1,1,1,1,1,2,2)) +  
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("Mean F0 (st)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 5, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))+
+  theme(text=element_text(family="Palatino Linotype"))
+
+
+ggsave(check_smooth_f0, file = "D:/Research/languages/graph/F0_st_cite.tiff", width=5, height=3, units = 'in', bg = "transparent")
+
+
+ggsave(check_smooth_f0.st, file = "D:/Research/languages/graph/F0_st_cite.pdf", device = cairo_pdf, width=5, height=3, units = 'in', bg = "transparent")
+
+```
+
+
+### Try Chao 5 scale conversion
+
+```{r}
+#(lgx - lg(min-SDmin)/ lg(max+SDmax)-lg(min-SDmin)) * 5
+dfsub.mean.cite = dfsub.mean.cite %>% mutate(gender = ifelse(subject %in% c("df1","df3","df5","df9"), "f", "m"))
+
+View(dfsub.mean.cite %>% filter(gender == "m" & time == 9 & f0 > 124 & tone == 2))
+
+View(dfsub.mean.cite %>% filter(subject == "df4" & filen == 11))
+
+
+df.sub.mean.cite.chaosummary.gender = dfsub.mean.cite %>% group_by(tone.value, time, gender) %>%
+  dplyr::summarise(mean = mean(f0, na.rm = T),
+                   sd = sd(f0, na.rm = T)) %>%
+  ungroup()
+
+df.sub.mean.cite.chaosummary.gender = df.sub.mean.cite.chaosummary.gender %>% group_by(gender) %>%
+  mutate(maxf0 = max(mean),
+         minf0 = min(mean)) %>% ungroup()
+
+df.sub.mean.cite.chaosummary.gender$chao_value = ((log10(df.sub.mean.cite.chaosummary.gender$mean) - log10(df.sub.mean.cite.chaosummary.gender$minf0)) / (log10(df.sub.mean.cite.chaosummary.gender$maxf0) - log10(df.sub.mean.cite.chaosummary.gender$minf0))) * 5
+
+
+
+f0.female = df.sub.mean.cite.chaosummary.gender %>% filter(gender == "f") %>%
+  ggplot(aes(x = time, y = chao_value, color = tone.value, linetype = tone.value, group = tone.value)) +
+  geom_line(size = 1) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#66c2a5','#8da0cb','#5e3c99','#b2df8a','#fc8d62'))+
+  scale_linetype_manual(values=c(1,1,1,1,1,2,2)) +  
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("Mean F0 (st)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 5, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  scale_y_continuous(limits = c(0, 5), breaks = seq(1, 5, by = 1))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))+
+  theme(text=element_text(family="Palatino Linotype"))
+
+f0.male = df.sub.mean.cite.chaosummary.gender %>% filter(gender == "m") %>%
+  ggplot(aes(x = time, y = chao_value, color = tone.value, linetype = tone.value, group = tone.value)) +
+  geom_line(size = 1) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#66c2a5','#8da0cb','#5e3c99','#b2df8a','#fc8d62'))+
+  scale_linetype_manual(values=c(1,1,1,1,1,2,2)) +  
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("Mean F0 (st)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 5, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  scale_y_continuous(limits = c(0, 5), breaks = seq(1, 5, by = 1))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))+
+  theme(text=element_text(family="Palatino Linotype"))
+
+
+df.sub.mean.cite.chaosummary.gender = df.sub.mean.cite.chaosummary.gender %>% group_by(time, tone.value) %>%
+  mutate(mean.chao_value = mean(chao_value)) %>%
+    ungroup()
+
+# not by gender
+
+
+df.sub.mean.cite.chaosummary = dfsub.mean.cite %>% group_by(tone.value, time) %>%
+  dplyr::summarise(mean = mean(f0, na.rm = T),
+                   sd = sd(f0, na.rm = T)) %>%
+  ungroup()
+
+df.sub.mean.cite.chaosummary = df.sub.mean.cite.chaosummary %>%
+  mutate(maxf0 = max(mean),
+         minf0 = min(mean),
+         minsd = min(sd),
+         maxsd = max(sd)) %>% ungroup()
+
+
+
+
+
+
+f0.track = df.sub.mean.cite.chaosummary.gender %>%
+  ggplot(aes(x = time, y = mean.chao_value, color = tone.value, linetype = tone.value, group = tone.value)) +
+  geom_line(size = 1) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#66c2a5','#8da0cb','#5e3c99','#b2df8a','#fc8d62'))+
+  scale_linetype_manual(values=c(1,1,1,1,1,2,2)) +  
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("Mean F0 (st)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 5, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  scale_y_continuous(limits = c(0, 5), breaks = seq(1, 5, by = 1))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))+
+  theme(text=element_text(family="Palatino Linotype"))
+
+ggarrange(f0.female, f0.male, f0.track, ncol = 3, nrow = 1, common.legend = T)
+
+
+```
+
+
+
+
+
+### H1H2
+
+```{r}
+
+check_h1h2 = dfsub.mean.cite %>%
+  ggplot(aes(x = time, y = h1h2c, color = tone.value, linetype = tone.value)) +
+  #  geom_line(stat='smooth', method = "loess", size = 1.5)+
+  #  geom_ribbon(stat='smooth', method = "loess", se=TRUE, alpha=0.1,
+  #              aes(color = NULL, group = factor(tone.value))) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.1) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#66c2a5','#8da0cb','#5e3c99','#b2df8a','#fc8d62'))+
+  scale_linetype_manual(values=c(1,1,1,1,1,2,2)) +  
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("H1*-H2* (dB)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))+
+  theme(text=element_text(family="Palatino Linotype"))
+
+
+
+
+ggsave(check_h1h2, file = "D:/Research/languages/graph/h1h2_cite.png", width=5, height=3, units = 'in', bg = "transparent")
+
+
+ggsave(check_h1h2, file = "D:/Research/languages/graph/h1h2_cite.pdf", device = cairo_pdf, width=5, height=3, units = 'in', bg = "transparent")
+
+
+```
+
+
+
+
+### HNR
+
+```{r}
+df.9p.cite = df.9p %>% filter(type == "cite")
+unique(df.9p.cite$tone)
+View(df.9p.cite %>% filter(is.na(tone)))
+
+check_hnr = df.9p %>% filter(type == "cite") %>%
+  ggplot(aes(x = time, y = hnr, color = tone, linetype = tone)) +
+  #  geom_line(stat='smooth', method = "loess", size = 1.5)+
+  #  geom_ribbon(stat='smooth', method = "loess", se=TRUE, alpha=0.1,
+  #              aes(color = NULL, group = factor(tone.value))) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.1) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#66c2a5','#8da0cb','#5e3c99','#b2df8a','#fc8d62'))+
+  scale_linetype_manual(values=c(1,1,1,1,1,2,2)) +  
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("HNR")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))+
+  theme(text=element_text(family="Palatino Linotype"))
+
+
+
+
+ggsave(check_hnr, file = "D:/Research/languages/graph/hnr_cite.png", width=5, height=3, units = 'in', bg = "transparent")
+
+
+ggsave(check_hnr, file = "D:/Research/languages/graph/hnr_cite.pdf", device = cairo_pdf, width=5, height=3, units = 'in', bg = "transparent")
+
+
+
+```
+
+
+### VQ ellipsis
+```{r}
+
+
+#ellipsis
+check_vq = dfsub.mean.cite %>%
+  ggplot(aes(x = h1h2c, y = hnr, color = tone.value)) +
+#  geom_point(alpha = 0.7, size = 0.5)+
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#66c2a5','#8da0cb','#5e3c99','#b2df8a','#fc8d62'))+
+  stat_ellipse(level=0.5, size = 1)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("H1-H2")+ 
+  ylab("HNR05") + 
+  theme(plot.title = element_text(hjust = 0.5))+
+#  scale_y_continuous(breaks=seq(-2,3,1),labels=c("-2.0", "-1.0","0.0","1.0","2.0","3.0"))+
+#  scale_x_continuous(breaks=seq(-3,3,1),labels=c("-3.0","-2.0", "-1.0","0.0","1.0","2.0","3.0"))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+#  theme(legend.position="none")+
+  guides(color=guide_legend(override.aes=list(fill=NA)))
+
+
+
+ggsave(check_vq, file = "D:/Research/languages/graph/vq_cite.png", width=5, height=3, units = 'in', bg = "transparent")
+
+
+```
+
+
+### Duration
+```{r}
+
+#duration
+
+check_dur = dfsub.mean.cite %>% dplyr::select(duration,tone.value,filename,subject) %>% unique() %>%
+  ggplot(aes(x=tone.value, y=duration, fill = tone.value))+ 
+  geom_boxplot(position="dodge",outlier.size = 0.5)+ 
+  scale_fill_manual(values=c('#a6cee3','#1f78b4','#66c2a5','#8da0cb','#5e3c99','#b2df8a','#fc8d62'))+
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("")+ 
+  ylab("Duration (ms)") + 
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  theme(strip.text.x = element_blank())+
+  theme(legend.position="none")+
+  theme(text=element_text(family="Palatino Linotype"))
+
+
+
+ggsave(check_dur, file = "D:/Research/languages/graph/dur_cite.png", width=5, height=3, units = 'in', bg = "transparent")
+
+
+
+ggsave(check_dur, file = "D:/Research/languages/graph/dur_cite.pdf", device = cairo_pdf, width=5, height=3, units = 'in', bg = "transparent")
+
+
+
+```
+
+
+
+### Vowel plot
+
+```{r}
+dfsub.mean.cite.midformant = dfsub.mean.cite %>% 
+  filter(time %in% c(4,5,6)) %>%
+  group_by(subject, filen) %>%
+  mutate(midf1 = mean(f1),
+         midf2 = mean(f2)) %>%
+  ungroup() %>%
+  dplyr::select(subject, filen, vowel, midf1, midf2, tone, formant_outlier) %>%
+  unique()
+
+
+dfsub.mean.cite.midformant.forplot = dfsub.mean.cite.midformant %>% filter(nchar(vowel) == 1)
+
+dfsub.mean.cite.midformant %>% 
+  filter(is.na(formant_outlier)) %>%
+  ggplot(aes(x = midf2, y = midf1)) +
+  geom_point(size = 0.6) +
+  #geom_text()+
+  facet_wrap(.~vowel)+
+  #geom_density_2d() +
+#  scale_color_manual(values=c('#a6611a','#dfc27d','#018571'))+
+  scale_y_reverse(limits = c(1500,0),position = "right") + 
+  scale_x_reverse(limits = c(3500,0),position = "top")+
+  theme_bw()
+
+```
+
+
+### subdivide by contrast
+
+```{r}
+
+df_segment %>% filter(contrast_for %in% c("23_44","23_2","2_44")) %>% pull(filen) -> index.2_23_44.cite
+
+df_segment %>% filter(contrast_for %in% c("5_35_42","5_35","35_42","5_42")) %>% pull(filen) -> index.5_35_42.cite
+
+#sandhi index
+
+df_meta %>% filter(contrast_for %in% c("23_44")) %>% pull(filen) -> index.23_44.sandhi
+df_meta %>% filter(contrast_for %in% c("23_2")) %>% pull(filen) -> index.23_2.sandhi
+df_meta %>% filter(contrast_for %in% c("2_44")) %>% pull(filen) -> index.2_44.sandhi
+df_meta %>% filter(contrast_for %in% c("23_44","23_2","2_44")) %>% pull(filen) -> index.44.sandhi
+
+
+df_meta %>% filter(contrast_for %in% c("5_35_42","5_35") & target_tone %in% c(5, 35)) %>% pull(filen) -> index.5_35.sandhi
+df_meta %>% filter(contrast_for %in% c("5_35_42","35_42") & target_tone %in% c(35, 42)) %>% pull(filen) -> index.35_42.sandhi
+df_meta %>% filter(contrast_for %in% c("5_35_42","5_42") & target_tone %in% c(5, 42)) %>% pull(filen) -> index.5_42.sandhi
+df_meta %>% filter(contrast_for %in% c("5_35_42","5_42","5_35","35_42")) %>% pull(filen) -> index.55.sandhi
+
+df.9p = df.9p %>%
+        mutate(tone = as.factor(tone),
+         type = as.factor(type),
+         var.dur.null = "Duration",
+         var.f0.null = "F0",
+         var.vq.null = "Voice quality",
+         var.h1.null = "H1*-H2*",
+         var.hnr.null = "HNR")
+
+
+
+df.9p.cite.2_23_44 = df.9p %>%
+                    filter(type == "cite" & filen %in% index.2_23_44.cite)
+df.9p.cite.5_35_42 = df.9p %>%
+                    filter(type == "cite" & filen %in% index.5_35_42.cite)
+
+df.9p.sandhi.23_44 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.23_44.sandhi)        
+df.9p.sandhi.23_2 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.23_2.sandhi)        
+df.9p.sandhi.2_44 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.2_44.sandhi)        
+df.9p.sandhi.44 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.44.sandhi)  
+
+df.9p.sandhi.5_35 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.5_35.sandhi)        
+df.9p.sandhi.35_42 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.35_42.sandhi)        
+df.9p.sandhi.5_42 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.5_42.sandhi)        
+df.9p.sandhi.55 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.55.sandhi)                   
+
+
+
+df.3p.cite.2_23_44 = df.3p %>%
+                    filter(type == "cite" & filen %in% index.2_23_44.cite)
+df.3p.cite.5_35_42 = df.3p %>%
+                    filter(type == "cite" & filen %in% index.5_35_42.cite)
+
+df.3p.sandhi.23_44 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.23_44.sandhi)        
+df.3p.sandhi.23_2 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.23_2.sandhi)        
+df.3p.sandhi.2_44 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.2_44.sandhi)        
+
+
+df.3p.sandhi.5_35 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.5_35.sandhi)        
+df.3p.sandhi.35_42 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.35_42.sandhi)        
+df.3p.sandhi.5_42 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.5_42.sandhi)        
+                    
+
+
+
+df.3p.wide$tone = paste("T",df.3p.wide$tone,sep="")
+
+
+df.3p.wide = df.3p.wide%>%
+  filter(!is.na(f0z_001) & !is.na(f0z_002) & !is.na(f0z_003)&
+           !is.na(h1h2z_001) & !is.na(h1h2z_002) & !is.na(h1h2z_003)&
+           !is.na(hnrz_001) & !is.na(hnrz_002) & !is.na(hnrz_003)) %>%
+           mutate(tone = as.factor(tone))
+df.3p.wide.cite.2_23_44 = df.3p.wide %>%
+                    filter(type == "cite" & filen %in% index.2_23_44.cite) %>%
+                    droplevels()
+df.3p.wide.cite.5_35_42 = df.3p.wide %>%
+                    filter(type == "cite" & filen %in% index.5_35_42.cite) %>%
+                    droplevels()
+df.3p.wide.sandhi.23_44 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.23_44.sandhi) %>%
+                    droplevels()      
+df.3p.wide.sandhi.23_2 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.23_2.sandhi) %>%
+                    droplevels()        
+df.3p.wide.sandhi.2_44 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.2_44.sandhi) %>%
+                    droplevels()        
+
+
+df.3p.wide.sandhi.5_35 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.5_35.sandhi) %>%
+                    droplevels()        
+df.3p.wide.sandhi.35_42 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.35_42.sandhi) %>%
+                    droplevels()        
+df.3p.wide.sandhi.5_42 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.5_42.sandhi) %>%
+                    droplevels()        
+                    
+
+
+
+```
+
+
+### LDA
+
+
+```{r}
+
+
+# citation 44 lda
+  
+  
+depend.var = c("hnrz_001","hnrz_002","hnrz_003","durationz","f0z_001","f0z_002","f0z_003","h1h2z_001","h1h2z_002","h1h2z_003")
+
+
+lda_formula = as.formula(paste('tone ~ ', paste(depend.var, collapse = '+')))
+
+lda_model.44.cite = lda(lda_formula, data = df.3p.wide.cite.2_23_44)
+lda_scores.44.cite= lda(lda_formula, data = df.3p.wide.cite.2_23_44, CV = TRUE)
+confusionMatrix(lda_scores.44.cite$class, df.3p.wide.cite.2_23_44$tone)
+
+
+round(prop.table(confusionMatrix(lda_scores.44.cite$class, df.3p.wide.cite.2_23_44$tone)$table), 4)
+
+
+predict.44.cite = predict(lda_model.44.cite)$x %>% # not the good CV predictions
+  as.data.frame() %>%
+  mutate(tone = df.3p.wide.cite.2_23_44$tone,
+         type = "Citation T2 vs. T44 vs. T23") 
+
+
+
+# citation 55 lda
+
+
+
+lda_model.55.cite = lda(lda_formula, data = df.3p.wide.cite.5_35_42)
+lda_scores.55.cite= lda(lda_formula, data = df.3p.wide.cite.5_35_42, CV = TRUE)
+confusionMatrix(lda_scores.55.cite$class, df.3p.wide.cite.5_35_42$tone)
+round(prop.table(confusionMatrix(lda_scores.55.cite$class, df.3p.wide.cite.5_35_42$tone)$table), 4)
+
+
+predict.55.cite = predict(lda_model.55.cite)$x %>% # not the good CV predictions
+  as.data.frame() %>%
+  mutate(tone = df.3p.wide.cite.5_35_42$tone,
+         type = "Citation T5 vs. T42 vs. T35") 
+
+```
+
+
+### Sandhi lda
+```{r}
+
+#23_44
+
+lda_model.23_44.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.23_44)
+lda_scores.23_44.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.23_44, CV = TRUE)
+confusionMatrix(lda_scores.23_44.sandhi$class, df.3p.wide.sandhi.23_44$tone)
+round(prop.table(confusionMatrix(lda_scores.23_44.sandhi$class, df.3p.wide.sandhi.23_44$tone)$table), 4)
+
+
+predict.23_44.sandhi = predict(lda_model.23_44.sandhi)$x %>% # not the good CV predictions
+  as.data.frame() %>%
+  mutate(tone = df.3p.wide.sandhi.23_44$tone,
+         type = "Sandhi",
+         contrast = "Sandhi T23 vs. T44") 
+
+#23_2
+
+df.3p.wide.sandhi.23_2 = df.3p.wide.sandhi.23_2 %>% filter(!filen %in% c(13, 14))
+lda_model.23_2.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.23_2)
+lda_scores.23_2.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.23_2, CV = TRUE)
+confusionMatrix(lda_scores.23_2.sandhi$class, df.3p.wide.sandhi.23_2$tone)
+round(prop.table(confusionMatrix(lda_scores.23_2.sandhi$class, df.3p.wide.sandhi.23_2$tone)$table), 4)
+
+
+predict.23_2.sandhi = predict(lda_model.23_2.sandhi)$x %>% # not the good CV predictions
+  as.data.frame() %>%
+  mutate(tone = df.3p.wide.sandhi.23_2$tone,
+         type = "Sandhi",
+         contrast = "Sandhi T2 vs. T23") 
+
+
+#2_44
+
+
+lda_model.2_44.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.2_44)
+lda_scores.2_44.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.2_44, CV = TRUE)
+confusionMatrix(lda_scores.2_44.sandhi$class, df.3p.wide.sandhi.2_44$tone)
+round(prop.table(confusionMatrix(lda_scores.2_44.sandhi$class, df.3p.wide.sandhi.2_44$tone)$table), 4)
+
+
+predict.2_44.sandhi = predict(lda_model.2_44.sandhi)$x %>% # not the good CV predictions
+  as.data.frame() %>%
+  mutate(tone = df.3p.wide.sandhi.2_44$tone,
+         type = "Sandhi",
+         contrast = "Sandhi T2 vs. T44") 
+
+predict.44.sandhi = rbind(predict.23_44.sandhi, predict.23_2.sandhi, predict.2_44.sandhi)
+
+#5_35
+
+lda_model.5_35.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.5_35)
+lda_scores.5_35.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.5_35, CV = TRUE)
+confusionMatrix(lda_scores.5_35.sandhi$class, df.3p.wide.sandhi.5_35$tone)
+round(prop.table(confusionMatrix(lda_scores.5_35.sandhi$class, df.3p.wide.sandhi.5_35$tone)$table), 4)
+
+
+predict.5_35.sandhi = predict(lda_model.5_35.sandhi)$x %>% # not the good CV predictions
+  as.data.frame() %>%
+  mutate(tone = df.3p.wide.sandhi.5_35$tone,
+         type = "Sandhi",
+         contrast = "Sandhi T5 vs. T35") 
+
+
+
+
+
+#35_42
+
+
+lda_model.35_42.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.35_42)
+lda_scores.35_42.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.35_42, CV = TRUE)
+confusionMatrix(lda_scores.35_42.sandhi$class, df.3p.wide.sandhi.35_42$tone)
+round(prop.table(confusionMatrix(lda_scores.35_42.sandhi$class, df.3p.wide.sandhi.35_42$tone)$table), 4)
+
+
+predict.35_42.sandhi = predict(lda_model.35_42.sandhi)$x %>% # not the good CV predictions
+  as.data.frame() %>%
+  mutate(tone = df.3p.wide.sandhi.35_42$tone,
+         type = "Sandhi",
+         contrast = "Sandhi T35 vs. T42") 
+
+#5_42
+
+
+lda_model.5_42.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.5_42)
+lda_scores.5_42.sandhi = lda(lda_formula, data = df.3p.wide.sandhi.5_42, CV = TRUE)
+confusionMatrix(lda_scores.5_42.sandhi$class, df.3p.wide.sandhi.5_42$tone)
+round(prop.table(confusionMatrix(lda_scores.5_42.sandhi$class, df.3p.wide.sandhi.5_42$tone)$table), 4)
+
+
+
+coef.5_42.san = coef(lda_model.5_42.sandhi) %>%
+  as.data.frame() %>%
+  mutate(type = "Citation",
+         label = depend.var)
+
+
+ld1=coef.5_42.san %>%
+  top_n(3,abs(LD1))
+
+
+predict.5_42.sandhi = predict(lda_model.5_42.sandhi)$x %>% # not the good CV predictions
+  as.data.frame() %>%
+  mutate(tone = df.3p.wide.sandhi.5_42$tone,
+         type = "Sandhi",
+         contrast = "Sandhi T5 vs. T42") 
+
+predict.55.sandhi = rbind(predict.5_35.sandhi, predict.35_42.sandhi, predict.5_42.sandhi)
+
+
+```
+
+
+### coefficient
+```{r}
+
+
+coef.44.cite = coef(lda_model.44.cite)%>%
+  as.data.frame() %>%
+  mutate(type = "cite",
+         label = depend.var,
+         contrast = "44")
+
+
+coef.55.cite = coef(lda_model.55.cite)%>%
+  as.data.frame() %>%
+  mutate(type = "cite",
+         label = depend.var,
+         contrast = "55")
+#23_44
+
+
+coef.23_44.san = coef(lda_model.23_44.sandhi) %>%
+  as.data.frame() %>%
+  mutate(type = "sandhi",
+         label = depend.var,
+         contrast = "23_44")
+
+#23_2
+
+
+coef.23_2.san = coef(lda_model.23_2.sandhi) %>%
+  as.data.frame() %>%
+  mutate(type = "sandhi",
+         label = depend.var,
+         contrast = "23_2")
+
+
+#2_44
+
+
+coef.2_44.san = coef(lda_model.2_44.sandhi) %>%
+  as.data.frame() %>%
+  mutate(type = "sandhi",
+         label = depend.var,
+         contrast = "2_44")
+
+#5_35
+coef.5_35.san = coef(lda_model.5_35.sandhi) %>%
+  as.data.frame() %>%
+  mutate(type = "sandhi",
+         label = depend.var,
+         contrast = "5_35")
+
+
+#35_42
+coef.35_42.san = coef(lda_model.35_42.sandhi) %>%
+  as.data.frame() %>%
+  mutate(type = "sandhi",
+         label = depend.var,
+         contrast = "35_42")
+
+#5_42
+coef.5_42.san = coef(lda_model.5_42.sandhi) %>%
+  as.data.frame() %>%
+  mutate(type = "sandhi",
+         label = depend.var,
+         contrast = "5_42")
+
+coef.san = rbind(coef.23_44.san,coef.23_2.san,coef.2_44.san,coef.5_35.san,coef.35_42.san,coef.5_42.san) %>% mutate(parameter = "coef")
+
+coef.cite = rbind(coef.44.cite, coef.55.cite) %>% mutate(parameter = "coef")
+
+View(coef.san %>% group_by(contrast) %>%top_n(3,abs(LD1)))
+
+View(coef.cite %>% group_by(contrast) %>%top_n(3,abs(LD1)))
+
+View(coef.cite %>% group_by(contrast) %>%top_n(3,abs(LD2)))
+
+```
+
+
+
+
+
+### correlation
+```{r}
+
+#44 cite
+ldvalue.44.cite = predict(lda_model.44.cite)$x %>%
+  as.data.frame()
+df.3p.wide.cite.2_23_44 = df.3p.wide.cite.2_23_44 %>%
+  mutate(LD1 = ldvalue.44.cite$LD1,
+         LD2 = ldvalue.44.cite$LD2)
+
+cor.44.cite = NULL
+for (i in depend.var) {
+  ld1 = unname(cor(df.3p.wide.cite.2_23_44$LD1, df.3p.wide.cite.2_23_44[i]))[1,1]
+  ld2 = unname(cor(df.3p.wide.cite.2_23_44$LD2, df.3p.wide.cite.2_23_44[i]))[1,1]
+  df.sub = data.frame(LD1 = ld1, LD2 = ld2, label = i, contrast = "44")
+  cor.44.cite = rbind(cor.44.cite, df.sub) 
+}
+
+
+#55 cite
+ldvalue.55.cite = predict(lda_model.55.cite)$x %>%
+  as.data.frame()
+df.3p.wide.cite.5_35_42 = df.3p.wide.cite.5_35_42 %>%
+  mutate(LD1 = ldvalue.55.cite$LD1,
+         LD2 = ldvalue.55.cite$LD2)
+
+cor.55.cite = NULL
+for (i in depend.var) {
+  ld1 = unname(cor(df.3p.wide.cite.5_35_42$LD1, df.3p.wide.cite.5_35_42[i]))[1,1]
+  ld2 = unname(cor(df.3p.wide.cite.5_35_42$LD2, df.3p.wide.cite.5_35_42[i]))[1,1]
+  df.sub = data.frame(LD1 = ld1, LD2 = ld2, label = i, contrast = "55")
+  cor.55.cite = rbind(cor.55.cite, df.sub)
+}
+
+
+#23_44
+ldvalue.23_44.san = predict(lda_model.23_44.sandhi)$x %>%
+  as.data.frame()
+df.3p.wide.sandhi.23_44 = df.3p.wide.sandhi.23_44 %>%
+  mutate(LD1 = ldvalue.23_44.san$LD1)
+
+cor.23_44.san = NULL
+for (i in depend.var) {
+  ld1 = unname(cor(df.3p.wide.sandhi.23_44$LD1, df.3p.wide.sandhi.23_44[i]))[1,1]
+  df.sub = data.frame(LD1 = ld1, label = i, contrast = "23_44")
+  cor.23_44.san = rbind(cor.23_44.san, df.sub)
+}
+
+
+#23_2
+ldvalue.23_2.san = predict(lda_model.23_2.sandhi)$x %>%
+  as.data.frame()
+df.3p.wide.sandhi.23_2 = df.3p.wide.sandhi.23_2 %>%
+  mutate(LD1 = ldvalue.23_2.san$LD1)
+
+cor.23_2.san = NULL
+for (i in depend.var) {
+  ld1 = unname(cor(df.3p.wide.sandhi.23_2$LD1, df.3p.wide.sandhi.23_2[i]))[1,1]
+  df.sub = data.frame(LD1 = ld1, label = i, contrast = "23_2")
+  cor.23_2.san = rbind(cor.23_2.san, df.sub)
+}
+
+#2_44
+
+
+ldvalue.2_44.san = predict(lda_model.2_44.sandhi)$x %>%
+  as.data.frame()
+df.3p.wide.sandhi.2_44 = df.3p.wide.sandhi.2_44 %>%
+  mutate(LD1 = ldvalue.2_44.san$LD1)
+
+cor.2_44.san = NULL
+for (i in depend.var) {
+  ld1 = unname(cor(df.3p.wide.sandhi.2_44$LD1, df.3p.wide.sandhi.2_44[i]))[1,1]
+  df.sub = data.frame(LD1 = ld1, label = i, contrast = "2_44")
+  cor.2_44.san = rbind(cor.2_44.san, df.sub)
+}
+
+
+#5_35
+
+ldvalue.5_35.san = predict(lda_model.5_35.sandhi)$x %>%
+  as.data.frame()
+df.3p.wide.sandhi.5_35 = df.3p.wide.sandhi.5_35 %>%
+  mutate(LD1 = ldvalue.5_35.san$LD1)
+
+cor.5_35.san = NULL
+for (i in depend.var) {
+  ld1 = unname(cor(df.3p.wide.sandhi.5_35$LD1, df.3p.wide.sandhi.5_35[i]))[1,1]
+  df.sub = data.frame(LD1 = ld1, label = i, contrast = "5_35")
+  cor.5_35.san = rbind(cor.5_35.san, df.sub)
+}
+
+
+#35_42
+ldvalue.35_42.san = predict(lda_model.35_42.sandhi)$x %>%
+  as.data.frame()
+df.3p.wide.sandhi.35_42 = df.3p.wide.sandhi.35_42 %>%
+  mutate(LD1 = ldvalue.35_42.san$LD1)
+
+cor.35_42.san = NULL
+for (i in depend.var) {
+  ld1 = unname(cor(df.3p.wide.sandhi.35_42$LD1, df.3p.wide.sandhi.35_42[i]))[1,1]
+  df.sub = data.frame(LD1 = ld1, label = i, contrast = "35_42")
+  cor.35_42.san = rbind(cor.35_42.san, df.sub)
+}
+
+
+#5_42
+ldvalue.5_42.san = predict(lda_model.5_42.sandhi)$x %>%
+  as.data.frame()
+df.3p.wide.sandhi.5_42 = df.3p.wide.sandhi.5_42 %>%
+  mutate(LD1 = ldvalue.5_42.san$LD1)
+
+cor.5_42.san = NULL
+for (i in depend.var) {
+  ld1 = unname(cor(df.3p.wide.sandhi.5_42$LD1, df.3p.wide.sandhi.5_42[i]))[1,1]
+  df.sub = data.frame(LD1 = ld1, label = i, contrast = "5_42")
+  cor.5_42.san = rbind(cor.5_42.san, df.sub)
+}
+
+
+cor.cite = rbind(cor.44.cite, cor.55.cite) %>% mutate(parameter = "cor", type = "cite")
+cor.sandhi = rbind(cor.23_44.san,cor.23_2.san,cor.2_44.san,cor.5_35.san,cor.35_42.san,cor.5_42.san) %>% mutate(parameter = "cor", type = "sandhi")
+
+View(cor.cite)
+View(cor.sandhi)
+
+coef_cor.cite = rbind(coef.cite, cor.cite)
+coef_cor.sandhi = rbind(coef.san, cor.sandhi)
+
+View(coef_cor.sandhi %>% group_by(contrast, parameter) %>% top_n(3,abs(LD1)))
+
+View(coef_cor.cite %>% group_by(contrast, parameter) %>% top_n(3,abs(LD1)))
+
+
+
+```
+
+
+
+
+
+
+### Graph
+
+```{r}
+
+# Cite 44 lda
+
+
+predict.44.cite$tone = factor(predict.44.cite$tone, levels = c("T44", "T23", "T2"))
+predict.55.cite$tone = factor(predict.55.cite$tone, levels = c("T42", "T35", "T5"))
+predict.44.sandhi$tone = factor(predict.44.sandhi$tone, levels = c("T44", "T23", "T2"))
+predict.55.sandhi$tone = factor(predict.55.sandhi$tone, levels = c("T42", "T35", "T5"))
+
+lda_44_cite = predict.44.cite %>%
+  ggplot(aes(x = LD1, y = LD2, color = tone, linetype = tone)) +
+  stat_ellipse(level = 0.5, size = 1)+
+  scale_x_continuous(breaks = seq(-5,5,2.5))+
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  scale_color_manual(values=c('#a6cee3','#1f78b4','#b2df8a'))+
+  scale_linetype_manual(values=c(1,1,2))+
+  facet_grid(.~type)+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  xlab("LD1\n(a)")+ 
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size = 10))+
+  theme(axis.title.y = element_text(size = 10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(legend.text = element_text(size = 10))+
+  theme(legend.title = element_text(size = 10))
+  #+theme(text=element_text(family="Palatino Linotype"))
+
+
+ggsave(lda_44_cite, file = "D:/Research/languages/graph/lda_44_cite.png", width=4, height=3, units = 'in', bg = "transparent")
+
+
+# Citation 55 lda
+
+
+
+lda_55_cite = predict.55.cite %>%
+  ggplot(aes(x = LD1, y = LD2, color = tone, linetype = tone)) +
+  stat_ellipse(level = 0.5, size = 1)+
+  scale_x_continuous(breaks = seq(-5,5,2.5))+
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  scale_colour_manual(values=c('#66c2a5','#8da0cb','#fc8d62')) +
+  scale_linetype_manual(values=c(1,1,2))+
+  facet_grid(.~type)+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+    xlab("LD1\n(a)")+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size = 10))+
+  theme(axis.title.y = element_text(size = 10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(legend.text = element_text(size = 10))+
+  theme(legend.title = element_text(size = 10))
+  #+theme(text=element_text(family="Palatino Linotype"))
+
+
+ggsave(lda_55_cite, file = "D:/Research/languages/graph/lda_55_cite.png", width=5, height=3, units = 'in', bg = "transparent")
+
+#sandhi 44
+
+
+predict.44.sandhi$contrast = factor(predict.44.sandhi$contrast, levels = c("Sandhi T23 vs. T44", "Sandhi T2 vs. T23", "Sandhi T2 vs. T44"))
+
+
+predict.55.sandhi$contrast = factor(predict.55.sandhi$contrast, levels = c("Sandhi T35 vs. T42", "Sandhi T5 vs. T35", "Sandhi T5 vs. T42"))
+
+
+lda_44_sandhi = predict.44.sandhi %>%
+  ggplot(aes(x = LD1, color = tone, linetype = tone)) + 
+  #  geom_histogram(alpha = 0.5,bins = 50) + 
+  geom_density()+  
+  scale_color_manual(values=c('#a6cee3','#1f78b4','#b2df8a'))+
+    scale_linetype_manual(values=c(1,1,2))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  facet_grid(.~contrast)+
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+    xlab("LD1\n(b)")+ 
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size = 10))+
+  theme(axis.title.y = element_text(size = 10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(legend.text = element_text(size = 10))+
+  theme(legend.title = element_text(size = 10))
+  #+theme(text=element_text(family="Palatino Linotype"))
+
+
+#sandhi 55 lda
+
+
+lda_55_sandhi = predict.55.sandhi %>%
+  ggplot(aes(x = LD1, color = tone, linetype = tone)) + 
+  #  geom_histogram(alpha = 0.5,bins = 50) + 
+  geom_density(alpha = 0.5)+  
+  scale_colour_manual(values=c('#66c2a5','#8da0cb','#fc8d62')) +
+    scale_linetype_manual(values=c(1,1,2))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  facet_grid(.~contrast)+
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+    xlab("LD1\n(b)")+ 
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size = 10))+
+  theme(axis.title.y = element_text(size = 10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(legend.text = element_text(size = 10))+
+  theme(legend.title = element_text(size = 10))
+  #+theme(text=element_text(family="Palatino Linotype"))
+
+
+
+lda_44 = ggarrange(lda_44_cite,lda_44_sandhi,
+                   nrow = 1, ncol = 2,
+                   widths = c(1,2.5),
+                   common.legend = TRUE, legend = "right")
+
+ggsave(lda_44, file = "D:/Research/languages/graph/lda_44.tiff", width=9, height=2.5, units = 'in', bg = "transparent")
+
+
+ggsave(lda_44, file = "D:/Research/languages/graph/lda_44.pdf", device = cairo_pdf, width=9, height=2.5, units = 'in', bg = "transparent")
+
+
+
+lda_55 = ggarrange(lda_55_cite,lda_55_sandhi,
+                   nrow = 1, ncol = 2,
+                   widths = c(1,2.5),
+                   common.legend = TRUE, legend = "right")
+
+ggsave(lda_55, file = "D:/Research/languages/graph/lda_55.tiff", width=9, height=2.5, units = 'in', bg = "transparent")
+
+
+ggsave(lda_55, file = "D:/Research/languages/graph/lda_55.pdf", device = cairo_pdf, width=9, height=2.5, units = 'in', bg = "transparent")
+
+
+ggsave(lda_44_sandhi, file = "D:/Research/languages/graph/lda_44_sandhi.png", width=7, height=2, units = 'in', bg = "transparent")
+
+ggsave(lda_55_sandhi, file = "D:/Research/languages/graph/lda_55_sandhi.png", width=7, height=2, units = 'in', bg = "transparent")
+
+```
+
+
+### Properties
+
+```{r}
+
+#neu 44
+
+df.44 = rbind(df.9p.cite.2_23_44,df.9p.sandhi.44)%>%mutate(type = as.character(type))
+df.55 = rbind(df.9p.cite.5_35_42,df.9p.sandhi.55)%>%mutate(type = as.character(type))
+df.44$type[df.44$type == "cite"] = "Citation"
+df.44$type[df.44$type == "sandhi"] = "Sandhi"
+df.55$type[df.55$type == "cite"] = "Citation"
+df.55$type[df.55$type == "sandhi"] = "Sandhi"
+
+df.44$tone = paste("T",df.44$tone,sep = "")
+df.55$tone = paste("T",df.55$tone,sep = "")
+df.44$tone = factor(df.44$tone, levels = c("T44", "T23", "T2"))
+df.55$tone = factor(df.55$tone, levels = c("T42", "T35", "T5"))
+df.44$duration[df.44$time == 2] = NA
+df.44$duration[df.44$time == 3] = NA
+df.44$duration[df.44$time == 4] = NA
+df.44$duration[df.44$time == 5] = NA
+df.44$duration[df.44$time == 6] = NA
+df.44$duration[df.44$time == 7] = NA
+df.44$duration[df.44$time == 8] = NA
+df.44$duration[df.44$time == 9] = NA
+
+df.55$duration[df.55$time == 2] = NA
+df.55$duration[df.55$time == 3] = NA
+df.55$duration[df.55$time == 4] = NA
+df.55$duration[df.55$time == 5] = NA
+df.55$duration[df.55$time == 6] = NA
+df.55$duration[df.55$time == 7] = NA
+df.55$duration[df.55$time == 8] = NA
+df.55$duration[df.55$time == 9] = NA
+
+df.44$durationz[df.44$time == 2] = NA
+df.44$durationz[df.44$time == 3] = NA
+df.44$durationz[df.44$time == 4] = NA
+df.44$durationz[df.44$time == 5] = NA
+df.44$durationz[df.44$time == 6] = NA
+df.44$durationz[df.44$time == 7] = NA
+df.44$durationz[df.44$time == 8] = NA
+df.44$durationz[df.44$time == 9] = NA
+
+df.55$durationz[df.55$time == 2] = NA
+df.55$durationz[df.55$time == 3] = NA
+df.55$durationz[df.55$time == 4] = NA
+df.55$durationz[df.55$time == 5] = NA
+df.55$durationz[df.55$time == 6] = NA
+df.55$durationz[df.55$time == 7] = NA
+df.55$durationz[df.55$time == 8] = NA
+df.55$durationz[df.44$time == 9] = NA
+
+neu44_f0 = df.44 %>%
+  ggplot(aes(x = time, y = f0, color = tone, linetype = tone)) +
+  #  geom_line(stat='smooth', method = "loess", size = 1.5)+
+  #  geom_ribbon(stat='smooth', method = "loess", se=TRUE, alpha=0.1,
+  #              aes(color = NULL, group = factor(tone))) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.1) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#b2df8a'))+
+  scale_linetype_manual(values=c(1,1,2))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("F0 (Hz)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_grid(df.44$var.f0.null ~ df.44$type, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  theme(legend.position="none") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+
+
+
+neu44_h1h2 = df.44 %>%
+  ggplot(aes(x = time, y = h1h2c, color = tone,linetype = tone)) +
+  #  geom_line(stat='smooth', method = "loess", size = 1.5)+
+  #  geom_ribbon(stat='smooth', method = "loess", se=TRUE, alpha=0.1,
+  #              aes(color = NULL, group = factor(target_tone))) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.2) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#b2df8a'))+
+  scale_linetype_manual(values=c(1,1,2))+
+  #  facet_grid(~df$typename) +
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("H1-H2 (dB)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_grid(df.44$var.h1.null ~ df.44$type, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  #  labs(caption="Figure 7.1. Residual HNR in different positions") + 
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  theme(legend.position="none") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+
+
+neu44_hnr = df.44 %>%
+  ggplot(aes(x = time, y = hnr, color = tone,linetype = tone)) +
+  #  geom_line(stat='smooth', method = "loess", size = 1.5)+
+  #  geom_ribbon(stat='smooth', method = "loess", se=TRUE, alpha=0.1,
+  #              aes(color = NULL, group = factor(target_tone))) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.2) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#b2df8a'))+
+  scale_linetype_manual(values=c(1,1,2))+
+  #  facet_grid(~df$typename) +
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("HNR")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_grid(df.44$var.hnr.null ~ df.44$type, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  #  labs(caption="Figure 7.1. Residual HNR in different positions") + 
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  theme(legend.position="none") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+
+
+
+neu44_vq = df.44 %>%
+  ggplot(aes(x = h1h2c, y = hnr, color = tone, linetype = tone)) +
+#  geom_point(alpha = 0.7, size = 0.5)+
+  scale_color_manual(values=c('#a6cee3','#1f78b4','#b2df8a'))+
+  scale_linetype_manual(values=c(1,1,2))+
+  stat_ellipse(level=0.5, size = 1)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("H1-H2 (dB)")+ 
+  ylab("HNR05") + 
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_grid(df.44$var.vq.null ~ df.44$type) +
+#  scale_y_continuous(breaks=seq(-2,3,1),labels=c("-2.0", "-1.0","0.0","1.0","2.0","3.0"))+
+#  scale_x_continuous(breaks=seq(-3,3,1),labels=c("-3.0","-2.0", "-1.0","0.0","1.0","2.0","3.0"))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  theme(strip.text.x = element_blank())+
+  theme(legend.position="none")+
+  guides(color=guide_legend(override.aes=list(fill=NA)))
+
+
+
+
+neu44_dur = df.44 %>%
+  ggplot(aes(x=tone, y=duration, fill = tone))+ 
+  geom_boxplot(position="dodge",outlier.size = 0.5)+ 
+  scale_fill_manual(values=c('#a6cee3','#1f78b4','#b2df8a'))+
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("")+ 
+  ylab("Duration (ms)") + 
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_grid(df.44$var.dur.null ~ df.44$type, scales = "free_x", space = "free_x") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  theme(strip.text.x = element_blank())+
+  theme(legend.position="none")
+
+
+property_44 = ggarrange(neu44_f0,neu44_h1h2,neu44_hnr,neu44_dur,
+          ncol = 1, nrow = 4,
+          heights = c(1.3,1.3,1.3,1),
+          common.legend = TRUE, legend = "right")
+
+
+
+
+ggsave(property_44, file = "D:/Research/languages/graph/property_44.tiff", width=6, height=6, units = 'in', bg = "transparent")
+
+
+ggsave(property_44, file = "D:/Research/languages/graph/property_44.pdf", width=6, height=6, units = 'in', bg = "transparent")
+
+
+property_44_sep = ggarrange(neu44_f0,neu44_h1h2,neu44_hnr,
+          ncol = 1, nrow = 3,
+          common.legend = TRUE, legend = "right")
+
+
+
+
+ggsave(property_44_sep, file = "D:/Research/languages/graph/property_44_sep.png", width=6, height=6, units = 'in', bg = "transparent")
+
+
+
+```
+
+
+
+```{r}
+
+neu55_f0 = df.55 %>%
+  ggplot(aes(x = time, y = f0, color = tone, linetype = tone)) +
+  #  geom_line(stat='smooth', method = "loess", size = 1.5)+
+  #  geom_ribbon(stat='smooth', method = "loess", se=TRUE, alpha=0.1,
+  #              aes(color = NULL, group = factor(tone))) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.1) +
+  scale_colour_manual(values=c('#66c2a5','#8da0cb','#fc8d62')) +
+  scale_linetype_manual(values=c(1,1,2))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("F0 (Hz)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_grid(df.55$var.f0.null ~ df.55$type, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  theme(legend.position="none") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+
+
+
+neu55_h1h2 = df.55 %>%
+  ggplot(aes(x = time, y = h1h2c, color = tone, linetype = tone)) +
+  #  geom_line(stat='smooth', method = "loess", size = 1.5)+
+  #  geom_ribbon(stat='smooth', method = "loess", se=TRUE, alpha=0.1,
+  #              aes(color = NULL, group = factor(target_tone))) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.2) +
+  scale_colour_manual(values=c('#66c2a5','#8da0cb','#fc8d62')) +
+    scale_linetype_manual(values=c(1,1,2))+
+  #  facet_grid(~df$typename) +
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("H1-H2 (dB)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_grid(df.55$var.h1.null ~ df.55$type, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  #  labs(caption="Figure 7.1. Residual HNR in different positions") + 
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  theme(legend.position="none") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+
+
+neu55_hnr = df.55 %>%
+  ggplot(aes(x = time, y = hnr, color = tone, linetype = tone)) +
+  #  geom_line(stat='smooth', method = "loess", size = 1.5)+
+  #  geom_ribbon(stat='smooth', method = "loess", se=TRUE, alpha=0.1,
+  #              aes(color = NULL, group = factor(target_tone))) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.2) +
+  scale_colour_manual(values=c('#66c2a5','#8da0cb','#fc8d62')) +
+  scale_linetype_manual(values=c(1,1,2))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("HNR")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_grid(df.55$var.hnr.null ~ df.55$type, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+#  theme(legend.position="none") +
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+
+
+
+neu55_vq = df.55 %>%
+  ggplot(aes(x = h1h2c, y = hnr, color = tone, linetype = tone)) +
+#  geom_point(alpha = 0.7, size = 0.5)+
+  scale_colour_manual(values=c('#66c2a5','#8da0cb','#fc8d62')) +
+  scale_linetype_manual(values=c(1,1,2)) +  
+  stat_ellipse(level=0.5, size = 1)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("H1-H2 (dB)")+ 
+  ylab("HNR05") + 
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_grid(df.55$var.vq.null ~ df.55$type) +
+#  scale_y_continuous(breaks=seq(-2,3,1),labels=c("-2.0", "-1.0","0.0","1.0","2.0","3.0"))+
+#  scale_x_continuous(breaks=seq(-3,3,1),labels=c("-3.0","-2.0", "-1.0","0.0","1.0","2.0","3.0"))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  theme(strip.text.x = element_blank())+
+  theme(legend.position="none")+
+  guides(color=guide_legend(override.aes=list(fill=NA)))
+
+
+
+
+neu55_dur = df.55 %>%
+  ggplot(aes(x=tone, y=duration, fill = tone))+ 
+  geom_boxplot(position="dodge",outlier.size = 0.5)+ 
+  scale_fill_manual(values=c('#66c2a5','#8da0cb','#fc8d62')) +
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("")+ 
+  ylab("Duration (ms)") + 
+  theme(plot.title = element_text(hjust = 0.5))+
+  facet_grid(df.55$var.dur.null ~ df.55$type, scales = "free_x", space = "free_x") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  theme(strip.text.x = element_blank())+
+  theme(legend.position="none")
+
+
+property_55 = ggarrange(neu55_f0,neu55_h1h2,neu55_hnr,neu55_dur,
+          ncol = 1, nrow = 4,
+          heights = c(1.3,1.3,1.3,1),
+          common.legend = TRUE, legend = "right")
+
+
+
+
+ggsave(property_55, file = "D:/Research/languages/graph/property_55.tiff", width=6, height=6, units = 'in', bg = "transparent")
+
+
+
+ggsave(property_55, file = "D:/Research/languages/graph/property_55.pdf", device = cairo_pdf,width=6, height=6, units = 'in', bg = "transparent")
+
+property_55_sep = ggarrange(neu55_f0,neu55_h1h2,neu55_hnr,
+          ncol = 1, nrow = 3,
+          common.legend = TRUE, legend = "right")
+
+
+
+
+ggsave(property_55_sep, file = "D:/Research/languages/graph/property_55_sep.png", width=6, height=6, units = 'in', bg = "transparent")
+
+```
+
+### stats
+
+```{r}
+
+df.9p$durationz[df.9p$time==2] = NA
+df.9p$durationz[df.9p$time==3] = NA
+df.9p$durationz[df.9p$time==4] = NA
+df.9p$durationz[df.9p$time==5] = NA
+df.9p$durationz[df.9p$time==6] = NA
+df.9p$durationz[df.9p$time==7] = NA
+df.9p$durationz[df.9p$time==8] = NA
+df.9p$durationz[df.9p$time==9] = NA
+
+
+df.9p$tone.5 = factor(df.9p$tone, levels = c("5", "2", "44", "23", "42", "35", "11"))
+df.9p$time.center = df.9p$time - 9
+h1h2.ref5 = lmer(h1h2cz ~ time.center + tone.5 + time.center*tone.5 + (1|subject), df.9p%>%filter(type == "cite"))
+
+
+
+write.csv(as.data.frame(summary(h1h2.ref5)$coefficient), "D:/Research/languages/stats/h1h2_ref5.csv")
+
+
+
+df.9p$tone.2 = factor(df.9p$tone, levels = c("2", "5", "44", "23", "42", "35", "11"))
+df.9p$time.center = df.9p$time - 9
+h1h2.ref2 = lmer(h1h2cz ~ time.center + tone.2 + time.center*tone.2 + (1|subject), df.9p%>%filter(type == "cite"))
+summary(h1h2.ref2)
+write.csv(as.data.frame(summary(h1h2.ref2)$coefficient), "D:/Research/languages/stats/h1h2_ref2.csv")
+
+```
+
+
+### HNR
+
+```{r}
+
+df.9p$tone = factor(df.9p$tone, levels = c("5", "2", "44", "23", "42", "35", "11"))
+df.9p$time.center4 = df.9p$time - 4
+df.9p$time2 = df.9p$time.center4^2
+hnr.ref5 = lmer(hnrz ~ time.center4 + time2 + tone + time.center4*tone + time2*tone + (1|subject), df.9p%>%filter(type == "cite"))
+summary(hnr.ref5)
+write.csv(as.data.frame(summary(hnr.ref5)$coefficient), "D:/Research/languages/stats/hnr_ref5.csv")
+
+df.9p.cite = df.9p %>% filter(type == "cite")
+df.9p.cite$hnr.predict <- predict(hnr.ref5, df.9p.cite, re.form = ~(1|subject))
+
+
+df.9p.cite$tone.value = paste("T",df.9p.cite$tone,sep = "")
+
+df.9p.cite = df.9p.cite %>%
+  mutate(tone.value= as.factor(tone.value))
+
+
+
+df.9p.cite$tone.value = factor(df.9p.cite$tone.value, levels = c("T44", "T23", "T42", "T35", "T11", "T5", "T2"))
+
+check_hnr_predict = df.9p.cite %>%
+  ggplot(aes(x = time, y = hnr.predict, color = tone.value, linetype = tone.value)) +
+  #  geom_line(stat='smooth', method = "loess", size = 1.5)+
+  #  geom_ribbon(stat='smooth', method = "loess", se=TRUE, alpha=0.1,
+  #              aes(color = NULL, group = factor(tone.value))) +
+  geom_smooth(method = loess, se = T, size = 1, alpha = 0.1) +
+  scale_colour_manual(values=c('#a6cee3','#1f78b4','#66c2a5','#8da0cb','#5e3c99','#b2df8a','#fc8d62'))+
+  scale_linetype_manual(values=c(1,1,1,1,1,2,2)) +  
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("HNR predicted")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  labs(color = "Tone")+
+  labs(linetype = "Tone")+
+  guides(color=guide_legend(override.aes=list(fill=NA)))+
+  theme(legend.title = element_text(size = 10),
+        legend.text = element_text(size = 10))+
+  theme(text=element_text(family="Palatino Linotype"))
+
+
+
+check_hnr_predict_original = ggarrange(check_hnr, check_hnr_predict, nrow = 1 ,ncol = 2, common.legend = TRUE, legend = "right")
+
+
+ggsave(check_hnr_predict_original, filename = "D:/Research/languages/graph/check_hnr_predict_original.tiff", width=9, height=4, units = 'in', bg = "transparent")
+
+#tone 5 at point 4
+#-0.023 - 0.064*time
+#tone 44 at point 4
+#-0.023+0.175 - (0.064+0.023)*time
+
+
+df.9p$tone = factor(df.9p$tone, levels = c("2", "5", "44", "23", "42", "35", "11"))
+hnr.ref2 = lmer(hnrz ~ tone + (1|subject), df.9p%>%filter(type == "cite"))
+summary(hnr.ref2)
+write.csv(as.data.frame(summary(hnr.ref2)$coefficient), "D:/Research/languages/stats/hnr_ref2.csv")
+
+
+df.9p$tone = factor(df.9p$tone, levels = c("5", "2", "44", "23", "42", "35", "11"))
+dur.ref5 = lmer(durationz ~ tone + (1|subject), df.9p%>%filter(type == "cite"))
+summary(dur.ref5)
+write.csv(as.data.frame(summary(dur.ref5)$coefficient), "D:/Research/languages/stats/dur_ref5.csv")
+
+
+
+df.9p$tone = factor(df.9p$tone, levels = c("2", "5", "44", "23", "42", "35", "11"))
+dur.ref2 = lmer(durationz ~ tone + (1|subject), df.9p%>%filter(type == "cite"))
+summary(dur.ref2)
+write.csv(as.data.frame(summary(dur.ref2)$coefficient), "D:/Research/languages/stats/dur_ref2.csv")
+
+```
+
+## Compare cite with sandhi directly
+```{r}
+
+df.44$tone = factor(df.44$tone, levels = c("T2", "T44", "T23"))
+
+cite.san.hnr = lmer(hnr ~ tone + type + tone*type + (1|subject), df.44)
+
+summary(cite.san.hnr)
+
+
+cite.san.h1h2 = lmer(h1h2c ~ tone + type + tone*type + (1|subject), df.44)
+summary(cite.san.h1h2)
+
+
+df.55$tone = factor(df.55$tone, levels = c("T5", "T42", "T35"))
+
+cite.san.hnr = lmer(hnr ~ tone + type + tone*type + (1|subject), df.55)
+
+summary(cite.san.hnr)
+
+
+cite.san.h1h2 = lmer(h1h2c ~ tone + type + tone*type + (1|subject), df.55)
+summary(cite.san.h1h2)
+
+```
+
+
+
+
+
+
+# exclude aspiration and fricative onset
+```{r}
+df_meta_filter = read_csv("E:/fieldwork_xiapu_summer2019/experiment/10_person_experiment/result/data-new/sandhi_metadata_languages_onsetfiltered.csv")
+
+df_meta_filter = df_meta_filter %>% filter(exclude == "N")
+
+df_meta_filter %>% filter(contrast_for %in% c("23_44")) %>% pull(filen) -> index.23_44.sandhi
+df_meta_filter %>% filter(contrast_for %in% c("23_2")) %>% pull(filen) -> index.23_2.sandhi
+df_meta_filter %>% filter(contrast_for %in% c("2_44")) %>% pull(filen) -> index.2_44.sandhi
+df_meta_filter %>% filter(contrast_for %in% c("23_44","23_2","2_44")) %>% pull(filen) -> index.44.sandhi
+
+
+df_meta_filter %>% filter(contrast_for %in% c("5_35_42","5_35") & target_tone %in% c(5, 35)) %>% pull(filen) -> index.5_35.sandhi
+df_meta_filter %>% filter(contrast_for %in% c("5_35_42","35_42") & target_tone %in% c(35, 42)) %>% pull(filen) -> index.35_42.sandhi
+df_meta_filter %>% filter(contrast_for %in% c("5_35_42","5_42") & target_tone %in% c(5, 42)) %>% pull(filen) -> index.5_42.sandhi
+df_meta_filter %>% filter(contrast_for %in% c("5_35_42","5_42","5_35","35_42")) %>% pull(filen) -> index.55.sandhi
+
+df.9p = df.9p %>%
+        mutate(tone = as.factor(tone),
+         type = as.factor(type),
+         var.dur.null = "Duration",
+         var.f0.null = "F0",
+         var.vq.null = "Voice quality",
+         var.h1.null = "H1*-H2*",
+         var.hnr.null = "HNR")
+
+
+
+df.9p.cite.2_23_44 = df.9p %>%
+                    filter(type == "cite" & filen %in% index.2_23_44.cite)
+df.9p.cite.5_35_42 = df.9p %>%
+                    filter(type == "cite" & filen %in% index.5_35_42.cite)
+
+df.9p.sandhi.23_44 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.23_44.sandhi)        
+df.9p.sandhi.23_2 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.23_2.sandhi)        
+df.9p.sandhi.2_44 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.2_44.sandhi)        
+df.9p.sandhi.44 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.44.sandhi)  
+
+df.9p.sandhi.5_35 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.5_35.sandhi)        
+df.9p.sandhi.35_42 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.35_42.sandhi)        
+df.9p.sandhi.5_42 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.5_42.sandhi)        
+df.9p.sandhi.55 = df.9p %>%
+                    filter(type == "sandhi" & filen %in% index.55.sandhi)                   
+
+
+
+df.3p.cite.2_23_44 = df.3p %>%
+                    filter(type == "cite" & filen %in% index.2_23_44.cite)
+df.3p.cite.5_35_42 = df.3p %>%
+                    filter(type == "cite" & filen %in% index.5_35_42.cite)
+
+df.3p.sandhi.23_44 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.23_44.sandhi)        
+df.3p.sandhi.23_2 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.23_2.sandhi)        
+df.3p.sandhi.2_44 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.2_44.sandhi)        
+
+
+df.3p.sandhi.5_35 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.5_35.sandhi)        
+df.3p.sandhi.35_42 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.35_42.sandhi)        
+df.3p.sandhi.5_42 = df.3p %>%
+                    filter(type == "sandhi" & filen %in% index.5_42.sandhi)        
+                    
+
+
+
+df.3p.wide$tone = paste("T",df.3p.wide$tone,sep="")
+
+
+df.3p.wide = df.3p.wide%>%
+  filter(!is.na(f0z_001) & !is.na(f0z_002) & !is.na(f0z_003)&
+           !is.na(h1h2z_001) & !is.na(h1h2z_002) & !is.na(h1h2z_003)&
+           !is.na(hnrz_001) & !is.na(hnrz_002) & !is.na(hnrz_003)) %>%
+           mutate(tone = as.factor(tone))
+df.3p.wide.cite.2_23_44 = df.3p.wide %>%
+                    filter(type == "cite" & filen %in% index.2_23_44.cite) %>%
+                    droplevels()
+df.3p.wide.cite.5_35_42 = df.3p.wide %>%
+                    filter(type == "cite" & filen %in% index.5_35_42.cite) %>%
+                    droplevels()
+df.3p.wide.sandhi.23_44 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.23_44.sandhi) %>%
+                    droplevels()      
+df.3p.wide.sandhi.23_2 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.23_2.sandhi) %>%
+                    droplevels()        
+df.3p.wide.sandhi.2_44 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.2_44.sandhi) %>%
+                    droplevels()        
+
+
+df.3p.wide.sandhi.5_35 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.5_35.sandhi) %>%
+                    droplevels()        
+df.3p.wide.sandhi.35_42 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.35_42.sandhi) %>%
+                    droplevels()        
+df.3p.wide.sandhi.5_42 = df.3p.wide %>%
+                    filter(type == "sandhi" & filen %in% index.5_42.sandhi) %>%
+                    droplevels()        
+
+
+```
+
+
+
+```{r}
+
+df.san.5 = df.55 %>% filter(tone == 5, type == "sandhi") %>% mutate(fileunique = paste(subject,filename,sep="-")) %>% filter(filen %in% c(29, 54))
+            
+subjectset = levels(as.factor(df.san.5$subject))
+
+
+for (j in subjectset) {
+  dfsub = df.san.5 %>%
+    filter(subject == j)
+  nameset = unique(droplevels(dfsub)$fileunique)
+  for (i in nameset) {
+    df.mean = dfsub %>%
+      filter(fileunique == i)
+      
+hnr.5 = df.mean %>%
+  ggplot(aes(x = time, y = hnr)) +
+  geom_smooth(method = loess, se = T, size = 1.5, alpha = 0.2) +
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  xlab("Time (normalized)")+ 
+  ylab("HNR")+
+  ggtitle(paste(j, i, sep = "-"))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_continuous(breaks = seq(1, 9,1))+
+  theme(plot.title = element_text(size = 10, hjust = 0.5))+
+  theme(axis.title.x = element_text(size=10))+
+  theme(axis.title.y = element_text(size=10))+
+  theme(axis.text.x = element_text(size = 10))+
+  theme(axis.text.y = element_text(size =10))+
+  theme(strip.text.y = element_text(size = 10))+
+  theme(strip.text.x = element_text(size = 10))+
+  theme(plot.caption = element_text(hjust=0, size=rel(2.3)))+
+  theme(legend.title = element_text(size = 12),
+        legend.text = element_text(size = 12))
+
+
+ggsave(hnr.5, file = paste("D:/Research/languages/graph/hnrbyfile/",j,i,".png", sep = ""), width=3, height=2, units = 'in', bg = "transparent")
+
+      
+  }
+}
+
+
+```
+
+
+
+https://www.youtube.com/playlist?list=PLHX-GTSXulUS-5ozDHqU2ZR3gJyYPLmVf
+
+8-11
+
