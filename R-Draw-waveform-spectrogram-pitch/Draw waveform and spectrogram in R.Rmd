@@ -24,11 +24,12 @@ library(scales)
 library(reshape2)
 ```
 
+* The source code and the example files are [here](https://github.com/yuanchaiyc/source-code/tree/main/R-Draw-waveform-spectrogram-pitch).
 
 ## Why do you want to draw waveform and/or spectrogram in R?
 1. Drawing in Praat picture is time-consuming;
 2. Drawing in Praat picture is holistic. If you want to modify one part of the picture, you have to start all over again;
-  + Points 1 and 2 can be overcome by writing Praat script. If you are interested in using Praat script to draw graph, this Praat script that I wrote could be helpful to you (also more than happy to talk about how to adjust it for your purposes). 
+    + Points 1 and 2 can be overcome by writing Praat script. If you are interested in using Praat script to draw graph, this Praat script that I wrote could be helpful to you (also more than happy to talk about how to adjust it for your purposes). 
 3. Praat picture has less flexibility than R packages such as ggplot2 in terms of aesthetic styles;
 4. You might want to combine waveform and/or spectrogram with other graphs that Praat picture cannot generate. For example, if I want to superimpose the derivatives of a EGG form on the original EGG form, it would be easier to do it using ggplot2;
 5. You might want to model the waveform for statistical analysis.
@@ -45,14 +46,14 @@ library(reshape2)
 1. Open a sound file in Praat. (sample_sound.wav)
 2. To get the the waveform text file: Select the sound file &#8594; "Save" &#8594; "Save as text file"
 3. To get the the spectrogram text file: Select the sound file &#8594; "Analyse spectrum" &#8594; "To spectrogram"
-  * Window length: 0.005 (if you want broad band spectrogram)
-  * Maximum frequency (Hz): 5000
-  * Time steps: 0.0001 (to get the maximum resolution)
-  * Frequency steps: 0.0001 (to get the maximum resolution)
+    + Window length: 0.005 (if you want broad band spectrogram)
+    + Maximum frequency (Hz): 5000
+    + Time steps: 0.0001 (to get the maximum resolution)
+    + Frequency steps: 0.0001 (to get the maximum resolution)
 Select the Spectrogram file &#8594; "Save" &#8594; "Save as text file"
 4. To get the pitch text file: Select the sound file &#8594; "Analyse periodicity" &#8594; "To Pitch" &#8594; Select the Pitch file &#8594; "Save" &#8594; "Save as text file"
-  * Note that if Praat tracked the pitch wrongly at some point, you can open the text file, change the "frequency" value of "candidate [1]" for the corresponding frame, and save the text file.
-  * Sometimes, it is easier to manipulate the sound, extract the pitch tier, modify the pitch tier, and save the pitch tier. It would require a different function to convert pitch tier file to dataframe.
+    * Note that if Praat tracked the pitch wrongly at some point, you can open the text file, change the "frequency" value of "candidate [1]" for the corresponding frame, and save the text file.
+    * Sometimes, it is easier to manipulate the sound, extract the pitch tier, modify the pitch tier, and save the pitch tier. It would require a different function to convert pitch tier file to dataframe.
 
 #### Go to R
 
