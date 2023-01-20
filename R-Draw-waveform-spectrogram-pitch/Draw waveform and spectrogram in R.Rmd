@@ -2,7 +2,10 @@
 title: "Draw waveform and spectrogram in R"
 author: "Yuan Chai"
 date: "2023-01-19"
-output: html_document
+output: 
+  html_document: 
+    toc: true
+    toc_depth: 3
 ---
 
 ```{r include=FALSE, echo = FALSE, eval = FALSE}
@@ -28,7 +31,7 @@ library(reshape2)
 
 * The source code and the example files are [here](https://github.com/yuanchaiyc/source-code/tree/main/R-Draw-waveform-spectrogram-pitch). (Download that folder if you would like to run the code locally.)
 * R code online are [here](https://posit.cloud/content/5036221). (No need to download anything. But need to run the install package block on the cloud.)
-
+* Acknowledgement: The idea is inspired by the script written by Matthew Winn. The code is [here](https://github.com/ListenLab/Praat/blob/master/praat_spectrogram_functions.R). The functions convert_spectrogram_to_df() and pre_emphasize() used in the current script are copied from the script above. The youtube tutorial for Matthew Winn's script is [here](https://www.youtube.com/watch?v=23V-7MbR_yk). 
 
 ## Why do you want to draw waveform and/or spectrogram in R?
 1. Drawing in Praat picture is time-consuming;
