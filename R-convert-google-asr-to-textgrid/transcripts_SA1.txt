@@ -1,0 +1,55 @@
+{
+  "results": [ {
+    "alternatives": [ {
+      "confidence": 0.96093941,
+      "transcript": "she had your dark suit in Greasy wash water all year",
+      "words": [ {
+        "endTime": "0.400s",
+        "startTime": "0s",
+        "word": "she"
+      }, {
+        "endTime": "0.600s",
+        "startTime": "0.400s",
+        "word": "had"
+      }, {
+        "endTime": "0.700s",
+        "startTime": "0.600s",
+        "word": "your"
+      }, {
+        "endTime": "1.200s",
+        "startTime": "0.700s",
+        "word": "dark"
+      }, {
+        "endTime": "1.400s",
+        "startTime": "1.200s",
+        "word": "suit"
+      }, {
+        "endTime": "1.600s",
+        "startTime": "1.400s",
+        "word": "in"
+      }, {
+        "endTime": "2s",
+        "startTime": "1.600s",
+        "word": "Greasy"
+      }, {
+        "endTime": "2.400s",
+        "startTime": "2s",
+        "word": "wash"
+      }, {
+        "endTime": "2.800s",
+        "startTime": "2.400s",
+        "word": "water"
+      }, {
+        "endTime": "3s",
+        "startTime": "2.800s",
+        "word": "all"
+      }, {
+        "endTime": "3.400s",
+        "startTime": "3s",
+        "word": "year"
+      } ]
+    } ],
+    "languageCode": "en-us",
+    "resultEndTime": "3.480s"
+  } ]
+}
